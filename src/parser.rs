@@ -1,7 +1,7 @@
-use nom::{Consumer, ConsumerState, MemProducer, IResult, Needed, space, multispace, alphanumeric};
+use nom::{Consumer, ConsumerState, MemProducer, IResult, Needed, space, multispace, alphanumeric, digit, line_ending};
 use nom::IResult::*;
 use std::str;
-use std::str::from_utf8;
+use std::str::{from_utf8};
 
 named!(namespace_parser<&[u8], &str>,
   chain!(
@@ -29,20 +29,61 @@ named!(identifier_parser<&[u8], &str>,
   )
 );
 
-// named!(struct_parser<&[u8], &str>
-//   chain!(
-//     tag!("struct") ~
-//     space ~
-//     name: map_res!(alphanumeric, from_utf8) ~
-//     multispace? ~
-//     tag!("{"),
-//     || { name }
-//   )
-// );
+named!(struct_parser<&[u8], StructIdent>,
+  chain!(
+    tag!("struct") ~
+    space ~
+    name: map_res!(alphanumeric, from_utf8) ~
+    multispace? ~
+    tag!("{") ~
+    multispace? ~
+    fields: many0!(struct_field_parser) ~
+    multispace? ~
+    tag!("}"),
+    || {
+        StructIdent {
+            name: name.to_string(),
+            fields: fields
+        }
+    }
+  )
+);
 
-// named!(struct_field_parser<&[u8], Field>
+#[derive(PartialEq, Debug)]
+pub struct StructIdent {
+    name: String,
+    fields: Vec<Field>
+}
 
-// );
+#[derive(PartialEq, Debug)]
+pub struct Field {
+    order: u8,
+    optional: bool,
+    ty: String,
+    name: String
+}
+
+named!(struct_field_parser<&[u8], Field>,
+  chain!(
+    multispace? ~
+    order: map_res!(digit, from_utf8) ~
+    tag!(":") ~
+    space? ~
+    ty: map_res!(alphanumeric, from_utf8) ~
+    space ~
+    field: map_res!(alphanumeric, from_utf8) ~
+    space? ~
+    tag!(","),
+    || {
+        Field {
+            order: order.parse().unwrap(),
+            optional: false,
+            ty: ty.to_string(),
+            name: field.to_string()
+        }
+    }
+  )
+);
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum State {
@@ -130,6 +171,64 @@ fn parse_namespace() {
 }
 
 #[test]
+fn parse_struct() {
+    let input = &b"struct Foobar {\n1: i32 foobar,\n }"[..];
+    assert_eq!(struct_parser(input), IResult::Done(
+        &b""[..],
+        StructIdent {
+            name: "Foobar".to_string(),
+            fields: vec![
+                Field {
+                    order: 1,
+                    optional: false,
+                    ty: "i32".to_string(),
+                    name: "foobar".to_string()
+                }
+            ]
+        }
+    ));
+}
+
+#[test]
+fn parse_struct_two_fields() {
+    let input = &b"struct Foobar {\n1: i32 foobar,\n2: i64 bigbo,\n }"[..];
+    assert_eq!(struct_parser(input), IResult::Done(
+        &b""[..],
+        StructIdent {
+            name: "Foobar".to_string(),
+            fields: vec![
+                Field {
+                    order: 1,
+                    optional: false,
+                    ty: "i32".to_string(),
+                    name: "foobar".to_string()
+                },
+                Field {
+                    order: 2,
+                    optional: false,
+                    ty: "i64".to_string(),
+                    name: "bigbo".to_string()
+                }
+            ]
+        }
+    ));
+}
+
+#[test]
+fn parse_struct_field() {
+    let input = &b"1: i32 foobar,"[..];
+    assert_eq!(struct_field_parser(input), IResult::Done(
+        &b""[..],
+        Field {
+            order: 1,
+            optional: false,
+            ty: "i32".to_string(),
+            name: "foobar".to_string()
+        }
+    ));
+}
+
+#[test]
 fn parse_idents() {
     let idents = vec![
         &b"struct"[..],
@@ -141,7 +240,10 @@ fn parse_idents() {
     ];
 
     for iden in idents {
-        assert_eq!(identifier_parser(iden), IResult::Done(&b""[..], from_utf8(iden).unwrap()));
+        assert_eq!(identifier_parser(iden), IResult::Done(
+            &b""[..],
+            from_utf8(iden).unwrap()
+        ));
     }
 }
 
