@@ -3,6 +3,74 @@ use nom::IResult::*;
 use std::str;
 use std::str::{from_utf8};
 
+#[derive(PartialEq, Debug)]
+pub struct StructIdent {
+    name: String,
+    fields: Vec<Field>
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Field {
+    order: u8,
+    optional: bool,
+    ty: String,
+    name: String
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum State {
+    // We haven't parsed anything yet, so we're at the very
+    // beginning state-wise.
+    Begin,
+    Forms,
+    End,
+    Done
+}
+
+#[derive(Debug)]
+pub enum Ast {
+    // Name, Option<Language spec>
+    Namespace(String, Option<String>),
+    Struct(String, Vec<Field>),
+    Typedef(ThriftType, String)
+}
+
+pub struct ParserConsumer {
+    state: State,
+    namespace: Option<String>
+}
+
+#[derive(Debug)]
+pub enum ThriftType {
+    Bool,
+    Byte,
+    S16Int,
+    S32Int,
+    S64Int,
+    Double,
+    String,
+    Binary,
+    Map,
+    List,
+    Set
+}
+
+impl ThriftType {
+    pub fn from_string(input: String) -> ThriftType {
+        match &input[..] {
+            "i16" => ThriftType::S16Int,
+            "i32" => ThriftType::S32Int,
+            "i64" => ThriftType::S64Int,
+            "double" => ThriftType::Double,
+            "string" => ThriftType::String,
+            "binary" => ThriftType::Binary,
+            "bool" => ThriftType::Bool,
+            "byte" => ThriftType::Byte,
+            _ => panic!("Thrust: the type '{}' is not a real type.", input)
+        }
+    }
+}
+
 named!(namespace_parser<&[u8], &str>,
   chain!(
     tag!("namespace") ~
@@ -11,6 +79,39 @@ named!(namespace_parser<&[u8], &str>,
     tag!(";") ~
     multispace?,
     || { name }
+  )
+);
+
+// XXX: Implement the more complex types like
+//      map, list and set. These will have their
+//      own named functions to parse `ty<0, ...n>`
+named!(types<&[u8], String>,
+  chain!(
+    val: map_res!(alt!(
+      tag!("i16") |
+      tag!("i32") |
+      tag!("i64") |
+      tag!("bool") |
+      tag!("byte") |
+      tag!("double") |
+      tag!("string") |
+      tag!("binary")
+    ), from_utf8),
+    || { val.to_string() }
+  )
+);
+
+named!(typedef_parser<&[u8], Ast>,
+  chain!(
+    tag!("typedef") ~
+    multispace ~
+    ty: types ~
+    multispace ~
+    alias: map_res!(alphanumeric, from_utf8) ~
+    line_ending,
+    || {
+        Ast::Typedef(ThriftType::from_string(ty), alias.to_string())
+    }
   )
 );
 
@@ -49,20 +150,6 @@ named!(struct_parser<&[u8], StructIdent>,
   )
 );
 
-#[derive(PartialEq, Debug)]
-pub struct StructIdent {
-    name: String,
-    fields: Vec<Field>
-}
-
-#[derive(PartialEq, Debug)]
-pub struct Field {
-    order: u8,
-    optional: bool,
-    ty: String,
-    name: String
-}
-
 named!(struct_field_parser<&[u8], Field>,
   chain!(
     multispace? ~
@@ -85,20 +172,6 @@ named!(struct_field_parser<&[u8], Field>,
   )
 );
 
-#[derive(PartialEq, Eq, Debug)]
-pub enum State {
-    // We haven't parsed anything yet, so we're at the very
-    // beginning state-wise.
-    Begin,
-    Forms,
-    End,
-    Done
-}
-
-pub struct ParserConsumer {
-    state: State,
-    namespace: Option<String>
-}
 
 impl Consumer for ParserConsumer {
     fn consume(&mut self, input: &[u8]) -> ConsumerState {
