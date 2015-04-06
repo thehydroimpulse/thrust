@@ -132,6 +132,33 @@ fn main() {
 
 When a transport receives a connection, it will pass it off to the Processor in a separate thread. Each transport exposes a set of uniform methods for dealing with a common set of functions. That allows other units in the system to be unaware of the type of transport and type of protocol.
 
+## Re-exporting Thrift Types
+
+By default, the generated "namespace" (in Thrift) or module (in Rust) is private. That means only the current file would be able to access the generated types. If you have multiple thrift namespaces, multiple thrift files, you might not want this behaviour. That's totally ok!
+
+The recommended way is to call the `thrust!` macro is a separate file and re-export the private module.
+
+```rust
+// src/lib.rs
+
+// Auth is where the authentication thrift types would be.
+pub mod auth;
+```
+
+Finally, you're `lib/auth.rs`
+
+```rust
+// src/auth.rs
+
+// You can either embed the thrift file here, or you can use the include_str! macro.
+thrust!(...);
+
+// Re-export the generated namespace.
+pub use wonder;
+```
+
+Now you're free to use the types in any other file in your Rust project(s). If you heavily use Thrift, you can create a separate cargo project just for your thrift definitions.
+
 ## License
 
 MIT &mdash; go ham!
