@@ -23,8 +23,7 @@ pub enum State {
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
-    // Name, Option<Language spec>
-    Namespace(String, Option<String>),
+    Namespace(Vec<String>),
     Struct(String, Vec<Field>),
     Typedef(ThriftType, String)
 }
@@ -65,14 +64,15 @@ impl ThriftType {
     }
 }
 
-named!(namespace_parser<&[u8], &str>,
+named!(namespace_parser<&[u8], Ast>,
   chain!(
     tag!("namespace") ~
     space ~
-    name: map_res!(alphanumeric, from_utf8) ~
-    tag!(";") ~
-    multispace?,
-    || { name }
+    lang: map_res!(alphanumeric, from_utf8) ~
+    space ~
+    ns: map_res!(alphanumeric, from_utf8) ~
+    line_ending,
+    || { Ast::Namespace(vec![lang.to_string(), ns.to_string()]) }
   )
 );
 
@@ -167,29 +167,29 @@ named!(struct_field_parser<&[u8], Field>,
 impl Consumer for ParserConsumer {
     fn consume(&mut self, input: &[u8]) -> ConsumerState {
         match self.state {
-            State::Begin => {
-                match namespace_parser(input) {
-                    Done(_, ns) => {
-                        // We have parsed the namespace, so we're now in a Fresh state.
-                        // XXX: Thrift might actually allow multiple namespaces in a file...
-                        self.state = State::Forms;
-                        self.namespace = Some(ns.to_string());
+            // State::Begin => {
+            //     match namespace_parser(input) {
+            //         Done(_, ns) => {
+            //             // We have parsed the namespace, so we're now in a Fresh state.
+            //             // XXX: Thrift might actually allow multiple namespaces in a file...
+            //             self.state = State::Forms;
+            //             self.namespace = Some(ns.to_string());
 
-                        // Note that we parsed some input and fill the buffer with another 5
-                        // to start off with.
-                        ConsumerState::Await(input.len(), 1)
-                    },
-                    Incomplete(Needed::Size(size)) => {
-                        let len = input.len() + size as usize;
-                        ConsumerState::Await(0, len + 1)
-                    },
-                    _ => {
-                        // It's ok, we don't need to find a namespace.
-                        self.state = State::Forms;
-                        ConsumerState::Await(0, 5)
-                    }
-                }
-            },
+            //             // Note that we parsed some input and fill the buffer with another 5
+            //             // to start off with.
+            //             ConsumerState::Await(input.len(), 1)
+            //         },
+            //         Incomplete(Needed::Size(size)) => {
+            //             let len = input.len() + size as usize;
+            //             ConsumerState::Await(0, len + 1)
+            //         },
+            //         _ => {
+            //             // It's ok, we don't need to find a namespace.
+            //             self.state = State::Forms;
+            //             ConsumerState::Await(0, 5)
+            //         }
+            //     }
+            // },
             State::Forms => {
                 println!("state forms {:?}", from_utf8(input));
                 match identifier_parser(input) {
@@ -226,12 +226,11 @@ impl Consumer for ParserConsumer {
 
 #[test]
 fn parse_namespace() {
-    let mut p = MemProducer::new(b"namespace foogggggbar;", 5);
-    let mut c = ParserConsumer { state: State::Begin, namespace: None };
-    c.run(&mut p);
-
-    assert_eq!(c.namespace, Some("foogggggbar".to_string()));
-    assert_eq!(c.state, State::Done);
+    let input = &b"namespace rust foobar\n"[..];
+    assert_eq!(namespace_parser(input), IResult::Done(
+        &b""[..],
+        Ast::Namespace(vec!["rust".to_string(), "foobar".to_string()])
+    ));
 }
 
 #[test]
@@ -298,23 +297,3 @@ fn parse_struct_field() {
         }
     ));
 }
-
-#[test]
-fn parse_idents() {
-    let idents = vec![
-        &b"struct"[..],
-        &b"service"[..],
-        &b"include"[..],
-        &b"typedef"[..],
-        &b"exception"[..],
-        &b"enum"[..]
-    ];
-
-    for iden in idents {
-        assert_eq!(identifier_parser(iden), IResult::Done(
-            &b""[..],
-            from_utf8(iden).unwrap()
-        ));
-    }
-}
-
