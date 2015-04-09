@@ -23,7 +23,8 @@ pub enum State {
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
-    Namespace(Vec<String>),
+    /// (Lang, Namespace)
+    Namespace(String, String),
     Struct(String, Vec<Field>),
     Typedef(ThriftType, String)
 }
@@ -72,7 +73,7 @@ named!(namespace_parser<&[u8], Ast>,
     space ~
     ns: map_res!(alphanumeric, from_utf8) ~
     line_ending,
-    || { Ast::Namespace(vec![lang.to_string(), ns.to_string()]) }
+    || { Ast::Namespace(lang.to_string(), ns.to_string()) }
   )
 );
 
@@ -229,7 +230,7 @@ fn parse_namespace() {
     let input = &b"namespace rust foobar\n"[..];
     assert_eq!(namespace_parser(input), IResult::Done(
         &b""[..],
-        Ast::Namespace(vec!["rust".to_string(), "foobar".to_string()])
+        Ast::Namespace("rust".to_string(), "foobar".to_string())
     ));
 }
 
