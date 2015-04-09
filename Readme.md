@@ -120,7 +120,7 @@ extern create thrust;
 use thrust::{Server, TcpTransport, Protocol};
 
 fn main() {
-  let mut transport = TcpTransport::new("0.0.0.0", 5688");
+  let mut transport = TcpTransport::new("0.0.0.0", 5688);
   let mut server = Server::new(&mut transport, Protocol::Binary);
 
   // Start listening for connections and hand them off to a Processor.
