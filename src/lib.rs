@@ -15,6 +15,13 @@
 extern crate nom;
 
 mod parser;
+mod transport;
+pub mod tcp {
+    pub mod transport;
+}
+
+pub use tcp::transport::TcpTransport;
+pub use transport::Transport;
 
 // fn expand_thrust(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
 //     -> Box<MacResult + 'static> {
