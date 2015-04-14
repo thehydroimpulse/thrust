@@ -65,7 +65,7 @@ impl ThriftType {
     }
 }
 
-named!(namespace_parser<&[u8], Ast>,
+named!(pub namespace_parser<&[u8], Ast>,
   chain!(
     tag!("namespace") ~
     space ~
@@ -80,7 +80,7 @@ named!(namespace_parser<&[u8], Ast>,
 // XXX: Implement the more complex types like
 //      map, list and set. These will have their
 //      own named functions to parse `ty<0, ...n>`
-named!(types<&[u8], String>,
+named!(pub types<&[u8], String>,
   chain!(
     val: map_res!(alt!(
       tag!("i16") |
@@ -96,7 +96,7 @@ named!(types<&[u8], String>,
   )
 );
 
-named!(typedef_parser<&[u8], Ast>,
+named!(pub typedef_parser<&[u8], Ast>,
   chain!(
     tag!("typedef") ~
     multispace ~
@@ -110,7 +110,7 @@ named!(typedef_parser<&[u8], Ast>,
   )
 );
 
-named!(identifier_parser<&[u8], &str>,
+named!(pub identifier_parser<&[u8], &str>,
   chain!(
     iden: map_res!(alt!(
       tag!("struct") |
@@ -125,7 +125,7 @@ named!(identifier_parser<&[u8], &str>,
   )
 );
 
-named!(struct_parser<&[u8], Ast>,
+named!(pub struct_parser<&[u8], Ast>,
   chain!(
     tag!("struct") ~
     space ~
@@ -142,7 +142,7 @@ named!(struct_parser<&[u8], Ast>,
   )
 );
 
-named!(struct_field_parser<&[u8], Field>,
+named!(pub struct_field_parser<&[u8], Field>,
   chain!(
     multispace? ~
     order: map_res!(digit, from_utf8) ~
