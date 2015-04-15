@@ -24,7 +24,7 @@ pub enum State {
 #[derive(Debug, PartialEq)]
 pub enum Ast {
     /// (Lang, Namespace)
-    Namespace(String, String),
+    Namespace(Vec<String>),
     Struct(String, Vec<Field>),
     Typedef(ThriftType, String)
 }
@@ -68,12 +68,17 @@ impl ThriftType {
 named!(pub namespace_parser<&[u8], Ast>,
   chain!(
     tag!("namespace") ~
-    space ~
-    lang: map_res!(alphanumeric, from_utf8) ~
-    space ~
-    ns: map_res!(alphanumeric, from_utf8) ~
+    parts: many1!(
+        chain!(
+            space ~
+            name: map_res!(alphanumeric, from_utf8),
+            || { name.to_string() }
+        )
+    ) ~
     line_ending,
-    || { Ast::Namespace(lang.to_string(), ns.to_string()) }
+    || {
+        Ast::Namespace(parts)
+    }
   )
 );
 
@@ -225,76 +230,84 @@ impl Consumer for ParserConsumer {
 }
 
 
-#[test]
-fn parse_namespace() {
-    let input = &b"namespace rust foobar\n"[..];
-    assert_eq!(namespace_parser(input), IResult::Done(
-        &b""[..],
-        Ast::Namespace("rust".to_string(), "foobar".to_string())
-    ));
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-#[test]
-fn parse_typedefs() {
-    let mut input = &b"typedef i32 MyInteger\n"[..];
-    assert_eq!(typedef_parser(input), IResult::Done(
-        &b""[..],
-        Ast::Typedef(ThriftType::S32Int, "MyInteger".to_string())
-    ));
-}
+    use nom::{Consumer, ConsumerState, MemProducer, IResult, Needed, space, multispace, alphanumeric, digit, line_ending};
+    use nom::IResult::*;
 
-#[test]
-fn parse_struct() {
-    let input = &b"struct Foobar {\n1: i32 foobar,\n }"[..];
-    let fields = vec![
-        Field {
-            order: 1,
-            optional: false,
-            ty: "i32".to_string(),
-            name: "foobar".to_string()
-        }
-    ];
+    #[test]
+    fn parse_namespace() {
+        let input = &b"namespace rust foobar\n"[..];
+        assert_eq!(namespace_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Namespace(vec!["rust".to_string(), "foobar".to_string()])
+        ));
+    }
 
-    assert_eq!(struct_parser(input), IResult::Done(
-        &b""[..],
-        Ast::Struct("Foobar".to_string(), fields)
-    ));
-}
+    #[test]
+    fn parse_typedefs() {
+        let mut input = &b"typedef i32 MyInteger\n"[..];
+        assert_eq!(typedef_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Typedef(ThriftType::S32Int, "MyInteger".to_string())
+        ));
+    }
 
-#[test]
-fn parse_struct_two_fields() {
-    let input = &b"struct Foobar {\n1: i32 foobar,\n2: i64 bigbo,\n }"[..];
-    let fields = vec![
-        Field {
-            order: 1,
-            optional: false,
-            ty: "i32".to_string(),
-            name: "foobar".to_string()
-        },
-        Field {
-            order: 2,
-            optional: false,
-            ty: "i64".to_string(),
-            name: "bigbo".to_string()
-        }
-    ];
+    #[test]
+    fn parse_struct() {
+        let input = &b"struct Foobar {\n1: i32 foobar,\n }"[..];
+        let fields = vec![
+            Field {
+                order: 1,
+                optional: false,
+                ty: "i32".to_string(),
+                name: "foobar".to_string()
+            }
+        ];
 
-    assert_eq!(struct_parser(input), IResult::Done(
-        &b""[..],
-        Ast::Struct("Foobar".to_string(), fields)
-    ));
-}
+        assert_eq!(struct_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Struct("Foobar".to_string(), fields)
+        ));
+    }
 
-#[test]
-fn parse_struct_field() {
-    let input = &b"1: i32 foobar,"[..];
-    assert_eq!(struct_field_parser(input), IResult::Done(
-        &b""[..],
-        Field {
-            order: 1,
-            optional: false,
-            ty: "i32".to_string(),
-            name: "foobar".to_string()
-        }
-    ));
+    #[test]
+    fn parse_struct_two_fields() {
+        let input = &b"struct Foobar {\n1: i32 foobar,\n2: i64 bigbo,\n }"[..];
+        let fields = vec![
+            Field {
+                order: 1,
+                optional: false,
+                ty: "i32".to_string(),
+                name: "foobar".to_string()
+            },
+            Field {
+                order: 2,
+                optional: false,
+                ty: "i64".to_string(),
+                name: "bigbo".to_string()
+            }
+        ];
+
+        assert_eq!(struct_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Struct("Foobar".to_string(), fields)
+        ));
+    }
+
+    #[test]
+    fn parse_struct_field() {
+        let input = &b"1: i32 foobar,"[..];
+        assert_eq!(struct_field_parser(input), IResult::Done(
+            &b""[..],
+            Field {
+                order: 1,
+                optional: false,
+                ty: "i32".to_string(),
+                name: "foobar".to_string()
+            }
+        ));
+    }
 }
