@@ -3,5 +3,8 @@ name = "thrust"
 version = "0.0.1"
 authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
-[dependencies.nom]
-git = "https://github.com/Geal/nom"
+[dependencies]
+nom = "0.3.1"
+serde = "*"
+serde_macros = "*"
+byteorder = "*"

@@ -1,5 +1,6 @@
-#![feature(slice_patterns, plugin_registrar, rustc_private)]
+#![feature(slice_patterns, plugin_registrar, plugin, custom_derive, rustc_private)]
 #![allow(unused_variable, dead_code)]
+#![plugin(serde_macros)]
 
 // extern crate syntax;
 // extern crate rustc;
@@ -13,15 +14,16 @@
 
 #[macro_use]
 extern crate nom;
+extern crate serde;
+extern crate byteorder;
 
-mod parser;
+// mod parser;
+mod server;
 mod transport;
-pub mod tcp {
-    pub mod transport;
-}
+mod network;
+mod protocol;
 
-pub use tcp::transport::TcpTransport;
-pub use transport::Transport;
+pub use server::{Service, Server};
 
 // fn expand_thrust(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
 //     -> Box<MacResult + 'static> {
