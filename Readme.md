@@ -1,23 +1,23 @@
 # Thrust
 
-**Note:** A work in progress. The current focus is on the parser for the IDL before moving onto the macros and such.
+**Note:** A work in progress. It's not in a useful state right now.
 
 A Rust implementation of the [Apache Thrift](https://thrift.apache.org/) protocol that simplifies communicating between independent systems that may be implemented in various languages. Now, you can easily integrate Rust into your toolbox if you're heavily using Thrift.
 
-**Warning:** Because Thrust uses syntax extensions to generate code during the compile phase, you'll need to stick to the Rust nightlies for Thrust to compile. We'll be working on a separate code generation method that doesn't require syntax extensions for Thrust to be usable on 1.0.
+**Warning:** Because Thrust uses syntax extensions to generate code during the compile phase, you'll need to stick to the Rust nightlies for Thrust to compile. A traditional file generator is an option for the future to support stable 1.0.
 
 ## Installing
 
 ```toml
 [dependencies]
-thrust = "0.1.0"
+thrust = "*"
 ```
 
 ## Getting Started
 
-Thrust takes advantage of Rust's macros and doesn't touch the file system while generating the required code. It just works!
+Thrust takes advantage of Rust's macros and doesn't touch the file system while generating the required code.
 
-The single macro that Thrust uses has the following definition:
+The single macro that thrust uses has the following definition:
 
 ```rust
 thrust!("<str>");
@@ -25,9 +25,9 @@ thrust!("<str>");
 
 You would replace `<str>` with your Thrift definitions.
 
-## Definitions
+## IDL
 
-You would place your definitions normally, like you would in any other language. If you'd rather have your thrift files separate from the specific language source, that's totally ok! All Thrust requires is that you provide a string of some sort to the macro. This allows one to use the `include_str!` built-in Rust macro to suite your needs.
+You would place your thrift IDL normally, like you would in any other language. If you'd rather have your thrift files separate from the specific language source, that's totally ok! All thrust requires is that you provide a string of some sort to the macro. This allows one to use the `include_str!` built-in Rust macro to suite your needs.
 
 Let's define a simple Thrift file that can be used across both a C++ project and a Rust project:
 
@@ -43,7 +43,7 @@ struct Account {
 }
 ```
 
-Now let's define the Rust file that can be located anywhere. Again, Thrust doesn't generate any extra files, so it's completely agnostic to how your file system is structured.
+Now let's define the Rust file that can be located anywhere. Again, thrust doesn't generate any extra files, so it's completely agnostic to how your file system is structured.
 
 ```rust
 // src/lib.rs
@@ -65,72 +65,53 @@ That's it. When you compile your program, the macro will take care of parsing th
 
 ## Transports
 
-Thrust currently only supports raw TCP. HTTP can be added later using the Hyper HTTP library.
+Thrust currently only supports raw TCP.
 
-Asynchronous, event-driven I/O is not currently implemented, but will certainly be an option in the future.
+Asynchronous, event-driven I/O is not currently implemented, but will certainly be an option in the future. A traditional blocking I/O with a thread-pool is the basis for the current implementation.
 
 ## Protocol
 
-Thrust supports JSON and the simple binary encodings that are common within Thrift. Support for compact binary or other options will be supported in the future.
+The simple thrift binary protocol is the only one supported. New protocols are fairly easy to add.
 
-## Services
+## Creating a Service
 
-Services are implemented with the use of traits. For each service, a trait of the same name will be generated under the specified Thrust namespace.
+Each service spins up it's own server, isolated from any other service. Thrust uses the namespace declaration within the IDL for it's module name of the generated code.
+Here, we're creating a new `flockdb.thrift` namespace specifically for the Rust language.
+
+For each service, we'll have a trait and a struct generated. The trait ensures we're implementing all the RPC methods needed, and the struct gives us a target to implement the trait on.
 
 ```rust
-#[macro_use]
+/// An example that somewhat translates Twitter's use of Thrift within the
+/// FlockDb database to Thrust, a Rust implementation of Thrift.
+/// This should illustrate the rough API that Thrust exposes and how code generation
+/// using the `thrust!` procedural macro works.
+
 extern crate thrust;
 
-use thrust::Service;
+use thrust::{Server, ThriftResult};
+use flockdb::thrift::{FlockDb};
 
 thrust!("
-  namespace rust wonder;
+    namespace rust flockdb.thrift;
 
-  struct Person {
-    1: string name,
-  }
-
-  service Auth {
-    bool isAuthenticated(),
-    string login(1:string email, 2:string password)
-  }
+    service FlockDB {
+        bool contains(1: i64 source_id, 2: i32 graph_id, 3: i64 destination_id);
+    }
 ");
 
-struct Auth;
-
-impl wonder::Auth for Auth {
-  fn isAuthenticated() -> bool {
-    // ...
-  }
-
-  fn login(email: String, password: String) -> String {
-    // ...
-  }
+impl FlockDb::Service for FlockDb::Server {
+    fn contains(source_id: i64, graph_id: i32, destination_id: i64) -> ThriftResult<bool> {
+        Ok(true)
+    }
 }
-```
-
-## Creating a Server
-
-Thrust servers accept a transport and a protocol. The server's job is to initialize the different components, passing the grunt of the work to both the transport and the protocol.
-
-```rust
-#[macro_use]
-extern create thrust;
-
-use thrust::{Server, TcpTransport, Protocol};
 
 fn main() {
-  let mut transport = TcpTransport::new("0.0.0.0", 5688);
-  let mut server = Server::new(&mut transport, Protocol::Binary);
-
-  // Start listening for connections and hand them off to a Processor.
-  server.listen();
+    let server = Server::new("localhost:8000", FlockDb::Server);
+    server.listen();
 }
 ```
 
-## Concepts
-
-When a transport receives a connection, it will pass it off to the Processor in a separate thread. Each transport exposes a set of uniform methods for dealing with a common set of functions. That allows other units in the system to be unaware of the type of transport and type of protocol.
+As you can see, creating services is really easy. The only implementation you need to write yourself is the IDL and the implementation.
 
 ## Re-exporting Thrift Types
 
