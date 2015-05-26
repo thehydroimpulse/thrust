@@ -16,6 +16,7 @@
 extern crate nom;
 extern crate serde;
 extern crate byteorder;
+extern crate threadpool;
 
 // mod parser;
 mod server;
