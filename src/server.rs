@@ -48,7 +48,7 @@ impl<'a, S: Service, T: Transport> Server<'a, S, T> {
     /// Bind the Thrift service to a given transport.
     pub fn listen(&mut self) {
         let tx = self.transport_tx.clone();
-        self.transport.listen(tx);
+        self.transport.listen(self.addr, tx);
     }
 }
 
@@ -68,7 +68,7 @@ mod test {
 
     impl Transport for FakeTransport {
         type Connection = Cursor<Vec<u8>>;
-        fn listen(&mut self, tx: Sender<Task<Self::Connection>>) {
+        fn listen(&mut self, addr: &str, tx: Sender<Task<Self::Connection>>) {
             assert_eq!(1, 1);
         }
     }
