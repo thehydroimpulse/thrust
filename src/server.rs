@@ -5,10 +5,9 @@ use transport::{Stream, Transport};
 /// An opaque trait to implement against services.
 pub trait Service {}
 
-pub enum Task<S> where S: Stream {
-    /// When the transport layer accepts a new stream/connection,
-    /// they'll send a clone back to the server to store.
-    IncomingStream(S)
+pub enum TaskMessage {
+    Process(Box<Stream>),
+    Shutdown
 }
 
 /// Thrust server pieces together a transport, service, processor
@@ -19,8 +18,8 @@ pub struct Server<'a, S, T> where T: Transport {
     transport: T,
     /// Receiver part of the channel that communicates
     /// with the transport layer.
-    transport_rx: Receiver<Task<T::Connection>>,
-    transport_tx: Sender<Task<T::Connection>>
+    transport_rx: Receiver<TaskMessage>,
+    transport_tx: Sender<TaskMessage>
 }
 
 impl<'a, S: Service, T: Transport> Server<'a, S, T> {
@@ -59,7 +58,7 @@ mod test {
 
     impl Transport for FakeTransport {
         type Connection = Cursor<Vec<u8>>;
-        fn listen(&mut self, addr: &str, tx: Sender<Task<Self::Connection>>) {
+        fn listen(&mut self, addr: &str, tx: Sender<TaskMessage>) {
             assert_eq!(1, 1);
         }
     }
