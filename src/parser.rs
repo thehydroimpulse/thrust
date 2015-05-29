@@ -1,4 +1,5 @@
-use nom::{Consumer, ConsumerState, MemProducer, IResult, Needed, space, multispace, alphanumeric, digit, line_ending};
+use nom::{Consumer, Err, ConsumerState, MemProducer, IResult, Needed, not_line_ending,
+          space, multispace, alphanumeric, digit, line_ending};
 use nom::IResult::*;
 use std::str;
 use std::str::{from_utf8};
@@ -26,7 +27,8 @@ pub enum Ast {
     /// (Lang, Namespace)
     Namespace(Vec<String>),
     Struct(String, Vec<Field>),
-    Typedef(ThriftType, String)
+    Typedef(ThriftType, String),
+    Comment
 }
 
 pub struct ParserConsumer {
@@ -65,6 +67,37 @@ impl ThriftType {
     }
 }
 
+named!(blanks,
+       chain!(
+           many0!(alt!(multispace | comment_one_line | comment_block)),
+           || { &b""[..] }));
+
+// Auxiliary parser to ignore one-line comments
+named!(comment_one_line,
+       chain!(
+           alt!(tag!("//") | tag!("#")) ~
+           not_line_ending? ~
+           alt!(eol | eof),
+           || { &b""[..] }));
+
+named!(eol,
+       alt!(tag!("\r\n") | tag!("\n") | tag!("\u{2028}") | tag!("\u{2029}")));
+
+// Auxiliary parser to ignore block comments
+named!(comment_block,
+       chain!(
+           tag!("/*") ~
+           take_until_and_consume!(&b"*/"[..]),
+           || { &b""[..] }));
+
+fn eof(input:&[u8]) -> IResult<&[u8], &[u8]> {
+    if input.len() == 0 {
+        Done(input, input)
+    } else {
+        Error(Err::Code(0))
+    }
+}
+
 named!(pub namespace_parser<&[u8], Ast>,
   chain!(
     tag!("namespace") ~
@@ -75,6 +108,7 @@ named!(pub namespace_parser<&[u8], Ast>,
             || { name.to_string() }
         )
     ) ~
+    blanks? ~
     line_ending,
     || {
         Ast::Namespace(parts)
@@ -169,7 +203,6 @@ named!(pub struct_field_parser<&[u8], Field>,
   )
 );
 
-
 impl Consumer for ParserConsumer {
     fn consume(&mut self, input: &[u8]) -> ConsumerState {
         match self.state {
@@ -197,14 +230,11 @@ impl Consumer for ParserConsumer {
             //     }
             // },
             State::Forms => {
-                println!("state forms {:?}", from_utf8(input));
                 match identifier_parser(input) {
                     Done(_, "struct") => {
-                        println!("found struct");
                         ConsumerState::Await(input.len(), 1)
                     },
                     Done(_, b) => {
-                        println!("got form");
                         ConsumerState::ConsumerDone
                     },
                     Incomplete(Needed::Size(size)) => {
@@ -225,7 +255,6 @@ impl Consumer for ParserConsumer {
 
     fn end(&mut self) {
         self.state = State::Done;
-        println!("parser ended");
     }
 }
 
@@ -243,6 +272,24 @@ mod test {
         assert_eq!(namespace_parser(input), IResult::Done(
             &b""[..],
             Ast::Namespace(vec!["rust".to_string(), "foobar".to_string()])
+        ));
+    }
+
+    #[test]
+    fn parse_namespace_line_comment() {
+        let input = &b"namespace rust foobar//foobar\n"[..];
+        assert_eq!(namespace_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Namespace(vec!["rust".to_string(), "foobar".to_string()])
+        ));
+    }
+
+    #[test]
+    fn parse_namespace_without_lang() {
+        let input = &b"namespace foobar\n"[..];
+        assert_eq!(namespace_parser(input), IResult::Done(
+            &b""[..],
+            Ast::Namespace(vec!["foobar".to_string()])
         ));
     }
 

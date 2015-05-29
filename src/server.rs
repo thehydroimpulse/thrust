@@ -1,4 +1,3 @@
-use threadpool::ThreadPool;
 use std::io::{Read, Write};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use transport::{Stream, Transport};
@@ -21,18 +20,11 @@ pub struct Server<'a, S, T> where T: Transport {
     /// Receiver part of the channel that communicates
     /// with the transport layer.
     transport_rx: Receiver<Task<T::Connection>>,
-    transport_tx: Sender<Task<T::Connection>>,
-    pool: ThreadPool
+    transport_tx: Sender<Task<T::Connection>>
 }
 
 impl<'a, S: Service, T: Transport> Server<'a, S, T> {
-
-    /// Create a new server that implements the given service. Each server may only run against
-    /// a single service.
-    ///
-    /// Each server runs a thread pool for the transport to use to accept new connections
-    /// and to process them.
-    pub fn new(addr: &'a str, service: S, transport: T, pool_size: usize) -> Server<'a, S, T> {
+    pub fn new(addr: &'a str, service: S, transport: T) -> Server<'a, S, T> {
         let (tx, rx) = channel();
 
         Server {
@@ -40,8 +32,7 @@ impl<'a, S: Service, T: Transport> Server<'a, S, T> {
             addr: addr,
             transport: transport,
             transport_rx: rx,
-            transport_tx: tx,
-            pool: ThreadPool::new(pool_size)
+            transport_tx: tx
         }
     }
 
@@ -75,7 +66,7 @@ mod test {
 
     #[test]
     fn new_server() {
-        let mut server = Server::new("localhost:5966", FooService, FakeTransport, 4);
+        let mut server = Server::new("localhost:5966", FooService, FakeTransport);
         server.listen();
     }
 }
