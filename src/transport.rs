@@ -13,6 +13,80 @@ pub trait Stream: Write + Read + Send {}
 
 impl Stream for TcpStream {}
 
+/// Service-specific processor that handles a generic connection. For each
+/// Thrift service, a processor is implemented for it.
+///
+/// [server]
+///
+/// Let's take a `Cache` service as an example.
+///
+/// ```thrift
+/// service Cache {
+///     set(1: string key, 2: bytes value)
+///     bytes get(1: string key)
+/// }
+/// ```
+///
+/// We generate a service trait in Rust:
+///
+/// ```rust
+/// trait Cache {
+///     fn set(&self, key: String, value: &[u8]);
+///     fn get(&self, key: String) -> Vec<u8>;
+/// }
+/// ```
+///
+/// The protocol (e.g., BinaryProtocol) have various methods on how to decode
+/// and encode various parts of a message. For example:
+///
+/// - `messageBegin`
+/// - `messageEnd`
+/// - `structBegin`
+/// - `structEnd`
+/// - `structField`
+///
+/// However, the protocol does **not** have any information on the structured data
+/// we're working with (i.e., the service, the struct, etc...). The processor has this
+/// information.
+///
+/// Reflecting on the given service, for example, we can gather the information about
+/// method names, argument list, and return type. These are how we order the calls
+/// to the protocol to decode/encode them.
+///
+/// We need to find a way to store this information at compile-time.
+///
+/// Then we can have a static allocation on a service's method:
+///
+/// ```rust
+/// #![allow(dead_code)]
+/// struct MethodMeta {
+///     name: &'static str,
+///     /// List of arguments where the order is implicit.
+///     args: &'static [&'static str]
+/// }
+/// ```
+///
+/// We can then have a set of static allocations:
+///
+/// ```rust
+/// static CACHE_SET_META: MethodMeta = MethodMeta {
+///     name: "set",
+///     args: &["key", "value"]
+/// };
+/// ```
+///
+/// We also need to store a static slice of each method so we can iterate
+/// over them and find the correct one:
+///
+/// ```rust
+/// static CACHE_METHODS: &[MethodMeta] = ...;
+/// ```
+pub trait Processor {
+    type Connection: Stream;
+
+    fn process(stream: Self::Connection);
+}
+
 /// Transport layer that deals with handling incoming and outgoing connections. This is the main
 /// communication layer that touches the network. For server transports, outgoing communication
 /// does **not** go through this transport layer. That's handled by the respective `Stream` of the
