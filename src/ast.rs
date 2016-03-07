@@ -264,3 +264,162 @@ impl Ast for StructFieldNode {
         write!(w, ",\n");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parser::*;
+    use std::str;
+
+    #[test]
+    fn gen_ty_string() {
+        let mut v = Vec::new();
+        let mut s = Ty::String;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "String");
+    }
+
+    #[test]
+    fn gen_ty_void() {
+        let mut v = Vec::new();
+        let mut s = Ty::Void;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "()");
+    }
+
+    #[test]
+    fn gen_ty_bool() {
+        let mut v = Vec::new();
+        let mut s = Ty::Bool;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "bool");
+    }
+
+    #[test]
+    fn gen_ty_i16() {
+        let mut v = Vec::new();
+        let mut s = Ty::Signed16;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "i16");
+    }
+
+    #[test]
+    fn gen_ty_i32() {
+        let mut v = Vec::new();
+        let mut s = Ty::Signed32;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "i32");
+    }
+
+    #[test]
+    fn gen_ty_i64() {
+        let mut v = Vec::new();
+        let mut s = Ty::Signed64;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "i64");
+    }
+
+    #[test]
+    fn gen_ty_byte() {
+        let mut v = Vec::new();
+        let mut s = Ty::Byte;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "i8");
+    }
+
+    #[test]
+    fn gen_ty_binary() {
+        let mut v = Vec::new();
+        let mut s = Ty::Binary;
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "Vec<i8>");
+    }
+
+    #[test]
+    fn gen_ty_list() {
+        let mut v = Vec::new();
+        let mut s = Ty::List(Box::new(Ty::String));
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "Vec<String>");
+    }
+
+    #[test]
+    fn gen_ty_map() {
+        let mut v = Vec::new();
+        let mut s = Ty::Map(Box::new(Ty::String), Box::new(Ty::String));
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "HashMap<String, String>");
+    }
+
+    #[test]
+    fn gen_struct_field() {
+        let mut v = Vec::new();
+        let mut s = StructFieldNode {
+            order: 1,
+            metadata: FieldMetadataNode::Required,
+            ty: Ty::String,
+            ident: IdentNode(format!("foobar"))
+        };
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "foobar: String,\n");
+    }
+
+    #[test]
+    fn gen_struct_optional_field() {
+        let mut v = Vec::new();
+        let mut s = StructFieldNode {
+            order: 1,
+            metadata: FieldMetadataNode::Optional,
+            ty: Ty::String,
+            ident: IdentNode(format!("foobar"))
+        };
+        s.gen(&mut v);
+        assert_eq!(str::from_utf8(&v).unwrap(), "foobar: Option<String>,\n");
+    }
+
+    #[test]
+    fn gen_struct() {
+        let mut v = Vec::new();
+        let mut field = StructFieldNode {
+            order: 1,
+            metadata: FieldMetadataNode::Required,
+            ty: Ty::String,
+            ident: IdentNode(format!("foobar"))
+        };
+        let mut s = StructNode {
+            name: IdentNode(format!("Ping")),
+            fields: vec![field]
+        };
+
+        s.gen(&mut v);
+
+        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Ping {\nfoobar: String,\n}\n");
+    }
+
+    #[test]
+    fn gen_struct_multi_fields() {
+        let mut v = Vec::new();
+        let mut field1 = StructFieldNode {
+            order: 1,
+            metadata: FieldMetadataNode::Required,
+            ty: Ty::Signed64,
+            ident: IdentNode(format!("length"))
+        };
+
+        let mut field2 = StructFieldNode {
+            order: 2,
+            metadata: FieldMetadataNode::Required,
+            ty: Ty::Binary,
+            ident: IdentNode(format!("buffer"))
+        };
+
+        let mut s = StructNode {
+            name: IdentNode(format!("Data")),
+            fields: vec![field1, field2]
+        };
+
+        s.gen(&mut v);
+
+        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Data {\nlength: i64,\nbuffer: Vec<i8>,\n}\n");
+    }
+}
