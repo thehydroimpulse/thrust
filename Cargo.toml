@@ -1,12 +1,17 @@
 [package]
 name = "thrust"
-version = "0.0.1"
+version = "0.1.0"
+description = "Thrift for Rust"
+documentation = "https://thehydroimpulse.github.io/thrust/thrust/index.html"
+homepage = "https://github.com/thehydroimpulse/thrust"
+repository = "https://github.com/thehydroimpulse/thrust"
+readme = "Readme.md"
+keywords = ["thrift", "rpc", "async", "networking"]
+license = "MIT"
 authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [dependencies]
-byteorder = "*"
+nom = "~1.2.1"
+byteorder = "0.4"
 docopt = "0.6"
 rustc-serialize = "0.3"
-
-[dependencies.nom]
-git = "https://github.com/Geal/nom"
