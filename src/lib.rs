@@ -760,4 +760,31 @@ mod tests {
 
         assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Ping {\nfoobar: String,\n}\n");
     }
+
+    #[test]
+    fn gen_struct_multi_fields() {
+        let mut v = Vec::new();
+        let mut field1 = StructField {
+            order: 1,
+            metadata: FieldMetadata::Required,
+            ty: Ty::Signed64,
+            ident: IdentNode(format!("length"))
+        };
+
+        let mut field2 = StructField {
+            order: 2,
+            metadata: FieldMetadata::Required,
+            ty: Ty::Binary,
+            ident: IdentNode(format!("buffer"))
+        };
+
+        let mut s = StructNode {
+            name: IdentNode(format!("Data")),
+            fields: vec![field1, field2]
+        };
+
+        s.gen(&mut v);
+
+        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Data {\nlength: i64,\nbuffer: Vec<i8>,\n}\n");
+    }
 }
