@@ -1,4 +1,4 @@
-# Thrust
+# Thrust [![Build Status](https://travis-ci.org/thehydroimpulse/thrust.svg?branch=master)](https://travis-ci.org/thehydroimpulse/thrust)
 
 **Note:** A work in progress. It's not in a useful state right now.
 

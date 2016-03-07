@@ -1,0 +1,30 @@
+language: rust
+sudo: false
+cache:
+  apt: true
+  directories:
+  - target/debug/deps
+  - target/debug/build
+matrix:
+  include:
+  - rust: nightly
+    env: TEST_SUITE=suite_nightly
+  - rust: beta
+    env: TEST_SUITE=suite_beta
+  - rust: stable
+    env: TEST_SUITE=suite_stable
+script:
+- cargo build --verbose
+- cargo test --verbose
+- if [ "$TEST_SUITE" = "suite_nightly" ]; then cargo bench --verbose; fi
+after_success: |
+  [ $TRAVIS_BRANCH = master ] &&
+  [ $TRAVIS_PULL_REQUEST = false ] &&
+  cargo doc &&
+  echo "<meta http-equiv=refresh content=0;url=`echo $TRAVIS_REPO_SLUG | cut -d '/' -f 2`/index.html>" > target/doc/index.html &&
+  sudo pip install ghp-import &&
+  ghp-import -n target/doc &&
+  git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
+env:
+  global:
+    secure: R/VUiFqpQX5wA1aeK8GasWjBQQd4XvpmktacItZ885tNvjOZvj6sGs9OOnpj0fiMgbO8csUBlVcprPRUyl0B+QxuetWZAcNf09sPqR2eQrtU94p3f2Ce41SHqHGaz1tLdnIUHjjm+F8FM514tDMPY3GXeScqSyl68obtMpJf/pU=
