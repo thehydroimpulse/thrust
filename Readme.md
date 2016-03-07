@@ -18,6 +18,23 @@ A Rust implementation of the [Apache Thrift](https://thrift.apache.org/) protoco
 thrust = "*"
 ```
 
+You may also want to install the code generator using Cargo:
+
+```bash
+cargo install thrust
+```
+
+## Generating Rust Code
+
+Thrust comes with a `thrust` binary that compiles your `.thrift` files into Rust code.
+
+```bash
+thrust hello.thrift .
+```
+
+The first argument is the input thrift file and the second is the *path* where you want your
+Rust file to be written to. The filename will be based on the Rust namespace in your thrift file `namespace rust <name>`.
+
 ## License
 
 MIT &mdash; go ham!
