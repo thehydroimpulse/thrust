@@ -39,6 +39,23 @@ fn eof(input:&[u8]) -> IResult<&[u8], &[u8]> {
 
 named!(pub parse_ident<&[u8], &str>, map_res!(alphanumeric, str::from_utf8));
 
+named!(pub parse_thrift<&[u8], Vec<Box<Ast> > >, many0!(
+    alt!(
+        parse_ast_namespace |
+        parse_ast_struct
+    )
+));
+
+named!(pub parse_ast_namespace<&[u8], Box<Ast> >, chain!(
+    ns: parse_namespace,
+    || { Box::new(ns) }
+));
+
+named!(pub parse_ast_struct<&[u8], Box<Ast> >, chain!(
+    st: parse_struct,
+    || { Box::new(st) }
+));
+
 /// Recognizes numerical and alphabetic characters: 0-9a-zA-Z[.]
 pub fn namespace<'a>(input:&'a [u8]) -> IResult<&'a [u8], &'a [u8]> {
   let input_length = input.input_len();
@@ -60,11 +77,13 @@ pub fn namespace<'a>(input:&'a [u8]) -> IResult<&'a [u8], &'a [u8]> {
 }
 
 named!(pub parse_namespace<&[u8], NamespaceNode>, chain!(
+    multispace? ~
     tag!("namespace") ~
     space ~
     lang: parse_ident ~
     space ~
-    ns: map_res!(namespace, str::from_utf8),
+    ns: map_res!(alphanumeric, str::from_utf8) ~
+    multispace?,
     || {
         NamespaceNode::new(IdentNode(lang.to_string()), ns.to_string())
     }
@@ -147,6 +166,7 @@ named!(pub parse_service<&[u8], ServiceNode>, chain!(
 /// }
 /// ```
 named!(pub parse_struct<&[u8], StructNode>, chain!(
+    multispace? ~
     tag!("struct") ~
     space ~
     name: parse_ident ~
@@ -155,7 +175,8 @@ named!(pub parse_struct<&[u8], StructNode>, chain!(
     multispace? ~
     fields: many0!(parse_struct_field) ~
     multispace? ~
-    tag!("}"),
+    tag!("}") ~
+    multispace?,
     || {
         StructNode {
             name: IdentNode(name.to_string()),
@@ -199,7 +220,7 @@ mod tests {
     use std::str;
     use nom::IResult::*;
 
-    use ast::{IdentNode, StructNode, FunctionNode, ServiceNode, StructFieldNode, FieldMetadataNode, Ty, Ast};
+    use ast::{IdentNode, StructNode, FunctionNode, ServiceNode, NamespaceNode, StructFieldNode, FieldMetadataNode, Ty, Ast};
 
     #[test]
     fn should_parse_generics() {
@@ -218,6 +239,15 @@ mod tests {
         assert_eq!(parse_simple_type(b"double"), Done(&b""[..], format!("double")));
         assert_eq!(parse_simple_type(b"binary"), Done(&b""[..], format!("binary")));
         assert_eq!(parse_simple_type(b"string"), Done(&b""[..], format!("string")));
+    }
+
+    #[test]
+    fn parse_ns_test() {
+        let ns = NamespaceNode {
+            lang: IdentNode(format!("rust")),
+            ns: format!("Foobar")
+        };
+        assert_eq!(parse_namespace(b"namespace rust Foobar"), Done(&b""[..], ns));
     }
 
     #[test]

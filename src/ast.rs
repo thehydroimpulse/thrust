@@ -1,7 +1,9 @@
 use std::io::{Read, Write};
 
 pub trait Ast {
-    fn gen(&mut self, w: &mut Write) {}
+    fn gen(&self, w: &mut Write) {}
+    fn is_namespace(&self) -> bool { false }
+    fn namespace(&self) -> Option<String> { None }
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -174,32 +176,33 @@ pub struct EnumNode {
     pub name: IdentNode
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct NamespaceNode {
     pub lang: IdentNode,
-    pub ns: String,
-    pub nodes: Vec<Box<Ast>>
+    pub ns: String
 }
 
 impl NamespaceNode {
     pub fn new(lang: IdentNode, ns: String) -> NamespaceNode {
         NamespaceNode {
             lang: lang,
-            ns: ns,
-            nodes: Vec::new()
+            ns: ns
         }
     }
 }
 
 impl Ast for NamespaceNode {
-    fn gen(&mut self, w: &mut Write) {
+    fn gen(&self, w: &mut Write) {}
+
+    fn namespace(&self) -> Option<String> {
+        Some(self.ns.clone())
+    }
+
+    fn is_namespace(&self) -> bool {
         if &*self.lang.0 == "rust" {
-            write!(w, "pub mod {} {{\n", self.ns);
-
-            for node in self.nodes.iter_mut() {
-                node.gen(w);
-            }
-
-            write!(w, "\n}}");
+            true
+        } else {
+            false
         }
     }
 }
@@ -207,10 +210,12 @@ impl Ast for EnumNode {}
 impl Ast for IdentNode {}
 impl Ast for FunctionNode {}
 impl Ast for StructNode {
-    fn gen(&mut self, w: &mut Write) {
+    fn gen(&self, w: &mut Write) {
         write!(w, "pub struct {} {{\n", self.name.0);
 
-        for field in self.fields.iter_mut() {
+        for field in self.fields.iter() {
+            // 4 space indent.
+            write!(w, "    ");
             field.gen(w);
         }
 
@@ -219,22 +224,22 @@ impl Ast for StructNode {
 }
 
 impl Ast for Ty {
-    fn gen(&mut self, w: &mut Write) {
+    fn gen(&self, w: &mut Write) {
         match self {
-            &mut Ty::String => { write!(w, "String"); },
-            &mut Ty::Void => { write!(w, "()"); },
-            &mut Ty::Byte => { write!(w, "i8"); },
-            &mut Ty::Binary => { write!(w, "Vec<i8>"); },
-            &mut Ty::Signed16 => { write!(w, "i16"); },
-            &mut Ty::Signed32 => { write!(w, "i32"); },
-            &mut Ty::Signed64 => { write!(w, "i64"); },
-            &mut Ty::Bool => { write!(w, "bool"); },
-            &mut Ty::List(ref mut t) => {
+            &Ty::String => { write!(w, "String"); },
+            &Ty::Void => { write!(w, "()"); },
+            &Ty::Byte => { write!(w, "i8"); },
+            &Ty::Binary => { write!(w, "Vec<i8>"); },
+            &Ty::Signed16 => { write!(w, "i16"); },
+            &Ty::Signed32 => { write!(w, "i32"); },
+            &Ty::Signed64 => { write!(w, "i64"); },
+            &Ty::Bool => { write!(w, "bool"); },
+            &Ty::List(ref t) => {
                 write!(w, "Vec<");
                 t.gen(w);
                 write!(w, ">");
             },
-            &mut Ty::Map(ref mut k, ref mut v) => {
+            &Ty::Map(ref k, ref v) => {
                 write!(w, "HashMap<");
                 k.gen(w);
                 write!(w, ", ");
@@ -247,7 +252,7 @@ impl Ast for Ty {
 }
 
 impl Ast for StructFieldNode {
-    fn gen(&mut self, w: &mut Write) {
+    fn gen(&self, w: &mut Write) {
         // XXX: Replace `String` with the real type.
         write!(w, "{}: ", self.ident.0);
 
@@ -393,7 +398,7 @@ mod tests {
 
         s.gen(&mut v);
 
-        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Ping {\nfoobar: String,\n}\n");
+        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Ping {\n    foobar: String,\n}\n");
     }
 
     #[test]
@@ -420,6 +425,16 @@ mod tests {
 
         s.gen(&mut v);
 
-        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Data {\nlength: i64,\nbuffer: Vec<i8>,\n}\n");
+        assert_eq!(str::from_utf8(&v).unwrap(), "pub struct Data {\n    length: i64,\n    buffer: Vec<i8>,\n}\n");
     }
+
+    // #[test]
+    // fn gen_namespace() {
+    //     let mut ns = NamespaceNode::new(IdentNode(format!("rust")), format!("Flr"));
+    //     let mut v = Vec::new();
+
+    //     ns.gen(&mut v);
+
+    //     assert_eq!(str::from_utf8(&v).unwrap(), "pub mod Flr {\n\n}");
+    // }
 }

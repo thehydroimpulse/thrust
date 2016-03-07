@@ -5,6 +5,8 @@ authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [dependencies]
 byteorder = "*"
+docopt = "0.6"
+rustc-serialize = "0.3"
 
 [dependencies.nom]
 git = "https://github.com/Geal/nom"
