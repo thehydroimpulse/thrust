@@ -4,5 +4,7 @@ version = "0.0.1"
 authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [dependencies]
-nom = "*"
 byteorder = "*"
+
+[dependencies.nom]
+git = "https://github.com/Geal/nom"

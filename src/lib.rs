@@ -1,8 +1,10 @@
-use nom::{space, alphanumeric, IResult, multispace, not_line_ending, Err, be_u8, digit};
+#![feature(type_macros)]
+use nom::{space, alphanumeric, ErrorKind, IterIndices, IResult, multispace, not_line_ending, Err, be_u8, digit, InputLength, is_alphanumeric};
 use nom::IResult::*;
 use std::str;
 use std::convert::From;
 use std::io::Write;
+use std::ops::{Index,Range,RangeFrom};
 
 #[macro_use]
 extern crate nom;
@@ -119,7 +121,7 @@ impl Ty {
 }
 
 pub trait Ast {
-    fn gen<W: Write>(&mut self, w: &mut W) {}
+    fn gen(&mut self, w: &mut Write) {}
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -181,11 +183,40 @@ pub struct EnumNode {
     name: IdentNode
 }
 
+pub struct NamespaceNode {
+    lang: IdentNode,
+    ns: String,
+    nodes: Vec<Box<Ast>>
+}
+
+impl NamespaceNode {
+    pub fn new(lang: IdentNode, ns: String) -> NamespaceNode {
+        NamespaceNode {
+            lang: lang,
+            ns: ns,
+            nodes: Vec::new()
+        }
+    }
+}
+
+impl Ast for NamespaceNode {
+    fn gen(&mut self, w: &mut Write) {
+        if &*self.lang.0 == "rust" {
+            write!(w, "pub mod {} {{\n", self.ns);
+
+            for node in self.nodes.iter_mut() {
+                node.gen(w);
+            }
+
+            write!(w, "\n}}");
+        }
+    }
+}
 impl Ast for EnumNode {}
 impl Ast for IdentNode {}
 impl Ast for FunctionNode {}
 impl Ast for StructNode {
-    fn gen<W: Write>(&mut self, w: &mut W) {
+    fn gen(&mut self, w: &mut Write) {
         write!(w, "pub struct {} {{\n", self.name.0);
 
         for field in self.fields.iter_mut() {
@@ -197,7 +228,7 @@ impl Ast for StructNode {
 }
 
 impl Ast for Ty {
-    fn gen<W: Write>(&mut self, w: &mut W) {
+    fn gen(&mut self, w: &mut Write) {
         match self {
             &mut Ty::String => { write!(w, "String"); },
             &mut Ty::Void => { write!(w, "()"); },
@@ -225,7 +256,7 @@ impl Ast for Ty {
 }
 
 impl Ast for StructField {
-    fn gen<W: Write>(&mut self, w: &mut W) {
+    fn gen(&mut self, w: &mut Write) {
         // XXX: Replace `String` with the real type.
         write!(w, "{}: ", self.ident.0);
 
@@ -270,11 +301,42 @@ fn eof(input:&[u8]) -> IResult<&[u8], &[u8]> {
     if input.len() == 0 {
         Done(input, input)
     } else {
-        Error(Err::Code(0))
+        Error(Err::Code(ErrorKind::Eof))
     }
 }
 
 named!(pub parse_ident<&[u8], &str>, map_res!(alphanumeric, str::from_utf8));
+
+/// Recognizes numerical and alphabetic characters: 0-9a-zA-Z[.]
+pub fn namespace<'a>(input:&'a [u8]) -> IResult<&'a [u8], &'a [u8]> {
+  let input_length = input.input_len();
+  if input_length == 0 {
+    return Error(Err::Position(ErrorKind::AlphaNumeric, input));
+  }
+
+  for (idx, item) in input.iter_indices() {
+    if !is_alphanumeric(*item) || *item != b'.' {
+      if idx == 0 {
+        return Error(Err::Position(ErrorKind::AlphaNumeric, input))
+      } else {
+        return Done(&input[idx..], &input[0..idx])
+      }
+    }
+  }
+
+  Done(&input[input_length..], input)
+}
+
+named!(pub parse_namespace<&[u8], NamespaceNode>, chain!(
+    tag!("namespace") ~
+    space ~
+    lang: parse_ident ~
+    space ~
+    ns: map_res!(namespace, str::from_utf8),
+    || {
+        NamespaceNode::new(IdentNode(lang.to_string()), ns.to_string())
+    }
+));
 
 pub type Generics = Vec<Ty>;
 
@@ -474,10 +536,10 @@ mod tests {
 
     #[test]
     fn parse_field_metadata() {
-        let res = parse_metadata(b"required");
+        let res = parse_metadata(b"required ");
         assert_eq!(res, Done(&[][..], FieldMetadata::Required));
 
-        let res = parse_metadata(b"optional");
+        let res = parse_metadata(b"optional ");
         assert_eq!(res, Done(&[][..], FieldMetadata::Optional));
     }
 
