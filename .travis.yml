@@ -1,10 +1,4 @@
 language: rust
-sudo: false
-cache:
-  apt: true
-  directories:
-  - target/debug/deps
-  - target/debug/build
 matrix:
   include:
   - rust: nightly
