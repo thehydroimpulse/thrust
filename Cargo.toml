@@ -15,3 +15,8 @@ nom = "~1.2.1"
 byteorder = "0.4"
 docopt = "0.6"
 rustc-serialize = "0.3"
+lazy_static = "0.1.*"
+serde = "*"
+
+[dependencies.mio]
+git = "https://github.com/carllerche/mio"

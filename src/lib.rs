@@ -1,5 +1,11 @@
+extern crate serde;
+
 #[macro_use]
 extern crate nom;
+#[macro_use]
+extern crate lazy_static;
+extern crate mio;
+extern crate byteorder;
 
 pub use generator::Generator;
 use nom::{IResult};
@@ -10,6 +16,9 @@ use std::string;
 mod parser;
 mod ast;
 mod generator;
+mod event_loop;
+mod reactor;
+mod protocol;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 

@@ -10,6 +10,7 @@ A Rust implementation of the [Apache Thrift](https://thrift.apache.org/) protoco
 - Rust code generator from a `.thrift` file.
 - Built on-top of Asynchronous I/O via Mio.
 - Heavily uses Futures to manage asynchronous code.
+- Multiplexing multiple RPC services on a single event-loop.
 
 ## Installing
 
