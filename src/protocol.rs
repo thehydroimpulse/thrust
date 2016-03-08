@@ -36,18 +36,18 @@ pub const THRIFT_TYPE_MASK: i32 = 0x000000ff;
 
 pub trait Protocol {
     fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType);
-    // fn write_message_end(&mut self);
-    // fn write_struct_begin(&mut self);
-    // fn write_struct_end(&mut self);
-    // fn write_field_begin(&mut self, ty: u8, id: i16);
-    // fn write_field_end(&mut self);
-    // fn write_field_stop(&mut self);
+    fn write_message_end(&mut self);
+    fn write_struct_begin(&mut self, name: &str);
+    fn write_struct_end(&mut self);
+    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16);
+    fn write_field_end(&mut self);
+    fn write_field_stop(&mut self);
     // fn write_bool(&mut self, val: bool);
     // fn write_byte(&mut self, val: u8);
     // fn write_i16(&mut self, val: i16);
     // fn write_i32(&mut self, val: i32);
     // fn write_i64(&mut self, val: i64);
-    // fn write_str(&mut self, val: &str);
+    fn write_str(&mut self, val: &str);
     // fn write_binary(&mut self, val: &[u8]);
 }
 
@@ -71,6 +71,31 @@ impl<'a> Protocol for BinaryProtocol<'a> {
         self.wr.serialize_str(name);
         // Seqid is always 0 apparently.
         self.wr.serialize_i16(0);
+    }
+
+    fn write_message_end(&mut self) {}
+
+    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) {
+        self.wr.serialize_i8(ty as i8);
+        self.wr.serialize_i16(id);
+    }
+
+    fn write_field_end(&mut self) {}
+
+    fn write_field_stop(&mut self) {
+        self.wr.serialize_i8(ThriftType::Stop as i8);
+    }
+
+    fn write_struct_begin(&mut self, name: &str) {
+
+    }
+
+    fn write_struct_end(&mut self) {
+
+    }
+
+    fn write_str(&mut self, val: &str) {
+        self.wr.serialize_str(val);
     }
 }
 

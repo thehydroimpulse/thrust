@@ -19,6 +19,7 @@ mod generator;
 mod event_loop;
 mod reactor;
 mod protocol;
+mod service;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 
