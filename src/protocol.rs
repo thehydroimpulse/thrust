@@ -1,5 +1,29 @@
 use std::io::{Read, Write};
 
+pub enum ThriftType {
+    Stop = 0,
+    Void = 1,
+    Bool = 2,
+    Byte = 3,
+    I16 = 6,
+    I32 = 8,
+    U64 = 9,
+    I64 = 10,
+    Double = 4,
+    String = 11,
+    Struct = 12,
+    Map = 13,
+    Set = 14,
+    List = 15
+}
+
+pub enum ThriftMessageType {
+    Call = 1,
+    Reply = 2,
+    Exception = 3,
+    Oneway = 4
+}
+
 pub trait Serializer {
     type Error = ();
     fn serialize_bool(&mut self, val: bool) -> Result<(), Self::Error>;
@@ -18,6 +42,24 @@ pub trait Serializer {
     fn serialize_bytes(&mut self, val: &[u8]) -> Result<(), Self::Error>;
 }
 
+pub trait Deserializer {
+    type Error = ();
+
+    fn deserialize_bool(&mut self) -> Result<bool, Self::Error>;
+    fn deserialize_usize(&mut self) -> Result<usize, Self::Error>;
+    fn deserialize_isize(&mut self) -> Result<isize, Self::Error>;
+    fn deserialize_u64(&mut self) -> Result<u64, Self::Error>;
+    fn deserialize_i64(&mut self) -> Result<i64, Self::Error>;
+    fn deserialize_u32(&mut self) -> Result<u32, Self::Error>;
+    fn deserialize_i32(&mut self) -> Result<i32, Self::Error>;
+    fn deserialize_u16(&mut self) -> Result<u16, Self::Error>;
+    fn deserialize_i16(&mut self) -> Result<i16, Self::Error>;
+    fn deserialize_u8(&mut self) -> Result<u8, Self::Error>;
+    fn deserialize_i8(&mut self) -> Result<i8, Self::Error>;
+    fn deserialize_bytes(&mut self) -> Result<Vec<u8>, Self::Error>;
+    fn deserialize_str(&mut self) -> Result<String, Self::Error>;
+}
+
 pub trait Serialize {
     fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error> where S: Serializer + ThriftSerializer;
 }
@@ -25,7 +67,7 @@ pub trait Serialize {
 pub trait ThriftSerializer {
     type TError = ();
 
-    fn write_message_begin(&mut self, name: &str) -> Result<(), Self::TError> {
+    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Self::TError> {
         Ok(())
     }
 
@@ -37,7 +79,7 @@ pub trait ThriftSerializer {
         Ok(())
     }
 
-    fn write_field_begin(&mut self, name: &str, ty: u16, id: u16) -> Result<(), Self::TError> {
+    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) -> Result<(), Self::TError> {
         Ok(())
     }
 
