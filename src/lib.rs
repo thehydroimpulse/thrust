@@ -1,3 +1,4 @@
+#![feature(associated_type_defaults)]
 extern crate serde;
 
 #[macro_use]
@@ -19,7 +20,8 @@ mod generator;
 mod event_loop;
 mod reactor;
 mod protocol;
-mod service;
+mod binary_protocol;
+// mod service;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 

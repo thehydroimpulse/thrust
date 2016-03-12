@@ -1,400 +1,167 @@
-use std::io::{Write, Read};
-use std::fmt::{self, Display};
-use std::convert::Into;
-use std::error;
-use serde::{Serialize, Serializer as Ser};
-use serde;
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::{Read, Write};
 
-pub enum ThriftType {
-    Stop = 0,
-    Void = 1,
-    Bool = 2,
-    Byte = 3,
-    I16 = 6,
-    I32 = 8,
-    U64 = 9,
-    I64 = 10,
-    Double = 4,
-    String = 11,
-    Struct = 12,
-    Map = 13,
-    Set = 14,
-    List = 15
+pub trait Serializer {
+    type Error = ();
+    fn serialize_bool(&mut self, val: bool) -> Result<(), Self::Error>;
+    fn serialize_str(&mut self, val: &str) -> Result<(), Self::Error>;
+    fn serialize_string(&mut self, val: String) -> Result<(), Self::Error>;
+    fn serialize_usize(&mut self, val: usize) -> Result<(), Self::Error>;
+    fn serialize_isize(&mut self, val: isize) -> Result<(), Self::Error>;
+    fn serialize_u64(&mut self, val: u64) -> Result<(), Self::Error>;
+    fn serialize_i64(&mut self, val: i64) -> Result<(), Self::Error>;
+    fn serialize_i32(&mut self, val: i32) -> Result<(), Self::Error>;
+    fn serialize_u32(&mut self, val: u32) -> Result<(), Self::Error>;
+    fn serialize_i16(&mut self, val: i16) -> Result<(), Self::Error>;
+    fn serialize_u16(&mut self, val: u16) -> Result<(), Self::Error>;
+    fn serialize_u8(&mut self, val: u8) -> Result<(), Self::Error>;
+    fn serialize_i8(&mut self, val: i8) -> Result<(), Self::Error>;
+    fn serialize_bytes(&mut self, val: &[u8]) -> Result<(), Self::Error>;
 }
 
-pub enum ThriftMessageType {
-    Call = 1,
-    Reply = 2,
-    Exception = 3,
-    Oneway = 4
+pub trait Serialize {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error> where S: Serializer + ThriftSerializer;
 }
 
-pub const THRIFT_VERSION_1: i32 = 0x80010000;
-pub const THRIFT_VERSION_MASK: i32 = 0xffff0000;
-pub const THRIFT_TYPE_MASK: i32 = 0x000000ff;
+pub trait ThriftSerializer {
+    type TError = ();
 
-pub trait Protocol {
-    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType);
-    fn write_message_end(&mut self);
-    fn write_struct_begin(&mut self, name: &str);
-    fn write_struct_end(&mut self);
-    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16);
-    fn write_field_end(&mut self);
-    fn write_field_stop(&mut self);
-    // fn write_bool(&mut self, val: bool);
-    // fn write_byte(&mut self, val: u8);
-    // fn write_i16(&mut self, val: i16);
-    // fn write_i32(&mut self, val: i32);
-    // fn write_i64(&mut self, val: i64);
-    fn write_str(&mut self, val: &str);
-    // fn write_binary(&mut self, val: &[u8]);
-}
-
-pub struct BinaryProtocol<'a> {
-    wr: Serializer<'a>
-}
-
-impl<'a> BinaryProtocol<'a> {
-    pub fn new(wr: &'a mut Write) -> BinaryProtocol<'a> {
-        BinaryProtocol {
-            wr: Serializer::new(wr)
-        }
-    }
-}
-
-impl<'a> Protocol for BinaryProtocol<'a> {
-    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) {
-        let version = THRIFT_VERSION_1 | message_type as i32;
-
-        self.wr.serialize_i32(version);
-        self.wr.serialize_str(name);
-        // Seqid is always 0 apparently.
-        self.wr.serialize_i16(0);
-    }
-
-    fn write_message_end(&mut self) {}
-
-    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) {
-        self.wr.serialize_i8(ty as i8);
-        self.wr.serialize_i16(id);
-    }
-
-    fn write_field_end(&mut self) {}
-
-    fn write_field_stop(&mut self) {
-        self.wr.serialize_i8(ThriftType::Stop as i8);
-    }
-
-    fn write_struct_begin(&mut self, name: &str) {
-
-    }
-
-    fn write_struct_end(&mut self) {
-
-    }
-
-    fn write_str(&mut self, val: &str) {
-        self.wr.serialize_str(val);
-    }
-}
-
-pub struct Serializer<'a> {
-    wr: &'a mut Write
-}
-
-impl<'a> Serializer<'a> {
-    pub fn new(wr: &'a mut Write) -> Serializer<'a> {
-        Serializer {
-            wr: wr
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Error {
-    Noop
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        ::std::error::Error::description(self).fmt(f)
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        "Foo"
-    }
-
-    fn cause(&self) -> Option<&::std::error::Error> {
-        None
-    }
-}
-
-impl serde::ser::Error for Error {
-    fn custom<T: Into<String>>(msg: T) -> Self {
-        Error::Noop
-    }
-}
-
-impl<'a> serde::Serializer for Serializer<'a> {
-    type Error = Error;
-
-    fn serialize_unit(&mut self) -> Result<(), Error> {
+    fn write_message_begin(&mut self, name: &str) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_bool(&mut self, val: bool) -> Result<(), Error> {
-        if val {
-            self.wr.write_i8(1);
-        } else {
-            self.wr.write_i8(0);
-        }
-
+    fn write_struct_begin(&mut self, name: &str) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_u8(&mut self, val: u8) -> Result<(), Error> {
-        self.serialize_i8(val as i8)
-    }
-
-    fn serialize_u16(&mut self, val: u16) -> Result<(), Error> {
-        self.serialize_i16(val as i16)
-    }
-
-    fn serialize_u32(&mut self, val: u32) -> Result<(), Error> {
-        self.serialize_i32(val as i32)
-    }
-
-    fn serialize_u64(&mut self, val: u64) -> Result<(), Error> {
-        self.serialize_i64(val as i64)
-    }
-
-    fn serialize_usize(&mut self, val: usize) -> Result<(), Error> {
-        self.serialize_i64(val as i64)
-    }
-
-    fn serialize_i8(&mut self, val: i8) -> Result<(), Error> {
-        self.wr.write_i8(val);
+    fn write_struct_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_i16(&mut self, val: i16) -> Result<(), Error> {
-        self.wr.write_i16::<BigEndian>(val);
+    fn write_field_begin(&mut self, name: &str, ty: u16, id: u16) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_i32(&mut self, val: i32) -> Result<(), Error> {
-        self.wr.write_i32::<BigEndian>(val);
+    fn write_field_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_i64(&mut self, val: i64) -> Result<(), Error> {
-        self.wr.write_i64::<BigEndian>(val);
+    fn write_field_stop(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn serialize_isize(&mut self, val: isize) -> Result<(), Error> {
-        self.serialize_i64(val as i64)
-    }
-
-    fn serialize_f32(&mut self, val: f32) -> Result<(), Error> {
+    fn write_message_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
+}
 
-    fn serialize_f64(&mut self, val: f64) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn serialize_char(&mut self, val: char) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn serialize_str(&mut self, val: &str) -> Result<(), Error> {
-        self.wr.write(val.as_bytes());
-        Ok(())
-    }
-
-    fn serialize_none(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn serialize_some<T>(&mut self, v: T) -> Result<(), Error>
-        where T: Serialize
+impl Serialize for bool {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
     {
-        Ok(())
+        s.serialize_bool(*self)
     }
-
-    fn serialize_bytes(&mut self, value: &[u8]) -> Result<(), Error> {
-        self.wr.write(value);
-        Ok(())
-    }
-
-    fn serialize_seq<V>(&mut self, mut visitor: V) -> Result<(), Error>
-        where V: serde::ser::SeqVisitor
-    {
-        Ok(())
-    }
-
-    fn serialize_seq_elt<V>(&mut self, value: V) -> Result<(), Error>
-        where V: serde::Serialize
-    {
-        value.serialize(self)
-    }
-
-
-    fn serialize_map<V>(&mut self, mut visitor: V) -> Result<(), Error>
-        where V: serde::ser::MapVisitor
-    {
-        Ok(())
-    }
-
-    fn serialize_map_elt<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
-        where K: serde::Serialize,
-              V: serde::Serialize,
-    {
-        try!(key.serialize(self));
-        value.serialize(self)
-    }
-
 }
 
-#[cfg(test)]
-mod tests {
-    use serde::ser::Serializer;
-    use std::io::{Cursor, Read};
-    use byteorder::{ReadBytesExt, BigEndian};
-    use super::{ThriftMessageType, BinaryProtocol, Protocol};
-
-    #[test]
-    fn serialize_bool_true() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_bool(true);
-        }
-
-        assert_eq!(v[0], 1);
+impl<'a> Serialize for &'a str {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_str(self)
     }
+}
 
-    #[test]
-    fn serialize_bool_false() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_bool(false);
-        }
-
-        assert_eq!(v[0], 0);
+impl Serialize for String {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_string(self.clone())
     }
+}
 
-    #[test]
-    fn serialize_i8() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i8(5);
-        }
-
-        assert_eq!(v[0], 5);
+impl Serialize for usize {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_usize(*self)
     }
+}
 
-    #[test]
-    fn serialize_i8_neg() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i8(-5);
-        }
-
-        assert_eq!(v[0] as i8, -5);
+impl Serialize for isize {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_isize(*self)
     }
+}
 
-    #[test]
-    fn serialize_i16() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i16(900);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(900, cursor.read_i16::<BigEndian>().unwrap());
+impl Serialize for u64 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_u64(*self)
     }
+}
 
-    #[test]
-    fn serialize_i16_neg() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i16(-900);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(-900, cursor.read_i16::<BigEndian>().unwrap());
+impl Serialize for i64 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_i64(*self)
     }
+}
 
-    #[test]
-    fn serialize_i32() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i32(3000000);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(3000000, cursor.read_i32::<BigEndian>().unwrap());
+impl Serialize for i32 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_i32(*self)
     }
+}
 
-    #[test]
-    fn serialize_i32_neg() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i32(-3000000);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(-3000000, cursor.read_i32::<BigEndian>().unwrap());
+impl Serialize for u32 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_u32(*self)
     }
+}
 
-    #[test]
-    fn serialize_i64() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i64(33000000);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(33000000, cursor.read_i64::<BigEndian>().unwrap());
+impl Serialize for u16 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_u16(*self)
     }
+}
 
-    #[test]
-    fn serialize_i64_neg() {
-        let mut v = Vec::new();
-        {
-            let mut s = super::Serializer::new(&mut v);
-            s.serialize_i64(-33000000);
-        }
-
-        let mut cursor = Cursor::new(v);
-        assert_eq!(-33000000, cursor.read_i64::<BigEndian>().unwrap());
+impl Serialize for i16 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_i16(*self)
     }
+}
 
-    #[test]
-    fn protocol_begin() {
-        let mut v = Vec::new();
-        {
-            let mut proto = BinaryProtocol::new(&mut v);
-            proto.write_message_begin("foobar", ThriftMessageType::Call);
-        }
+impl Serialize for i8 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_i8(*self)
+    }
+}
 
-        let mut cursor = Cursor::new(v);
-        let version = super::THRIFT_VERSION_1 | super::ThriftMessageType::Call as i32;
+impl Serialize for u8 {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_u8(*self)
+    }
+}
 
-        assert_eq!(version, cursor.read_i32::<BigEndian>().unwrap());
-        // XXX Decode string and seqid.
+impl<'a> Serialize for &'a [u8] {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), S::Error>
+        where S: Serializer + ThriftSerializer
+    {
+        s.serialize_bytes(self)
     }
 }

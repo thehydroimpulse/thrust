@@ -1,4 +1,4 @@
-use protocol::{Protocol, BinaryProtocol, ThriftType, ThriftMessageType};
+use protocol::{ProtocolEncoder, ProtocolDecoder, BinaryProtocolEncoder, ThriftType, ThriftMessageType};
 
 pub trait Service {
     fn query(&mut self, val: &str);
@@ -11,7 +11,7 @@ impl Service for RpcClient {
         let mut v = Vec::new();
 
         {
-            let mut proto = BinaryProtocol::new(&mut v);
+            let mut proto = BinaryProtocolEncoder::new(&mut v);
 
             proto.write_message_begin("query", ThriftMessageType::Call);
             proto.write_struct_begin("query_args");
