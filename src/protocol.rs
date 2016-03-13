@@ -281,6 +281,14 @@ impl Deserialize for String {
     }
 }
 
+impl Serialize for () {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
+        where S: Serializer + ThriftSerializer
+    {
+        Ok(())
+    }
+}
+
 impl Serialize for bool {
     fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
         where S: Serializer + ThriftSerializer
