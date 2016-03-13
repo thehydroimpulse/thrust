@@ -1,4 +1,4 @@
-use protocol::{Serializer, Deserializer, ThriftSerializer, ThriftMessageType, ThriftType};
+use protocol::{Serializer, Deserializer, ThriftSerializer, ThriftField, ThriftMessage, ThriftDeserializer, ThriftMessageType, ThriftType};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
 use std::string::FromUtf8Error;
@@ -12,7 +12,9 @@ pub const THRIFT_TYPE_MASK: i32 = 0x000000ff;
 pub enum Error {
     Byteorder(byteorder::Error),
     Io(io::Error),
-    Utf8Error(FromUtf8Error)
+    Utf8Error(FromUtf8Error),
+    BadVersion,
+    ProtocolVersionMissing
 }
 
 impl convert::From<byteorder::Error> for Error {
@@ -115,6 +117,47 @@ impl<'a> Serializer for BinarySerializer<'a> {
     }
 }
 
+impl<'a> ThriftSerializer for BinarySerializer<'a> {
+    type TError = Error;
+
+    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Self::TError> {
+        let version = THRIFT_VERSION_1 | message_type as i32;
+
+        try!(self.serialize_i32(version));
+        try!(self.serialize_str(name));
+        try!(self.serialize_i16(0));
+
+        Ok(())
+    }
+
+    fn write_struct_begin(&mut self, name: &str) -> Result<(), Self::TError> {
+        Ok(())
+    }
+
+    fn write_struct_end(&mut self) -> Result<(), Self::TError> {
+        Ok(())
+    }
+
+    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) -> Result<(), Self::TError> {
+        try!(self.serialize_i8(ty as i8));
+        try!(self.serialize_i16(id));
+        Ok(())
+    }
+
+    fn write_field_end(&mut self) -> Result<(), Self::TError> {
+        Ok(())
+    }
+
+    fn write_field_stop(&mut self) -> Result<(), Self::TError> {
+        try!(self.serialize_i8(ThriftType::Stop as i8));
+        Ok(())
+    }
+
+    fn write_message_end(&mut self) -> Result<(), Self::TError> {
+        Ok(())
+    }
+}
+
 pub struct BinaryDeserializer<R: Read + ReadBytesExt> {
     rd: R
 }
@@ -182,43 +225,56 @@ impl<R: Read + ReadBytesExt> Deserializer for BinaryDeserializer<R> {
     }
 }
 
-impl<'a> ThriftSerializer for BinarySerializer<'a> {
+impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
     type TError = Error;
 
-    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Self::TError> {
-        let version = THRIFT_VERSION_1 | message_type as i32;
+    fn read_message_begin(&mut self) -> Result<ThriftMessage, Self::TError> {
+        let size: i32 = try!(self.deserialize_i32());
 
-        try!(self.serialize_i32(version));
-        try!(self.serialize_str(name));
-        try!(self.serialize_i16(0));
+        if size < 0 {
+            let version = size & THRIFT_VERSION_MASK;
+            if version != THRIFT_VERSION_1 {
+                Err(Error::BadVersion)
+            } else {
+                Ok(ThriftMessage {
+                    name: try!(self.deserialize_str()),
+                    ty: ThriftMessageType::from((size & THRIFT_TYPE_MASK) as i8),
+                    seq: try!(self.deserialize_i16())
+                })
+            }
+        } else {
+            Err(Error::ProtocolVersionMissing)
+        }
+    }
 
+    fn read_message_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn write_struct_begin(&mut self, name: &str) -> Result<(), Self::TError> {
+    fn read_struct_begin(&mut self) -> Result<String, Self::TError> {
+        Ok("".to_string())
+    }
+
+    fn read_struct_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 
-    fn write_struct_end(&mut self) -> Result<(), Self::TError> {
-        Ok(())
+    fn read_field_begin(&mut self) -> Result<ThriftField, Self::TError> {
+        let mut field = ThriftField {
+            name: None,
+            ty: ThriftType::from(try!(self.deserialize_i8())),
+            seq: 0
+        };
+
+        if field.ty == ThriftType::Stop {
+            Ok(field)
+        } else {
+            field.seq = try!(self.deserialize_i16());
+            Ok(field)
+        }
     }
 
-    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) -> Result<(), Self::TError> {
-        try!(self.serialize_i8(ty as i8));
-        try!(self.serialize_i16(id));
-        Ok(())
-    }
-
-    fn write_field_end(&mut self) -> Result<(), Self::TError> {
-        Ok(())
-    }
-
-    fn write_field_stop(&mut self) -> Result<(), Self::TError> {
-        try!(self.serialize_i8(ThriftType::Stop as i8));
-        Ok(())
-    }
-
-    fn write_message_end(&mut self) -> Result<(), Self::TError> {
+    fn read_field_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
 }

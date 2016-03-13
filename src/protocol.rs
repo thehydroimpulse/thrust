@@ -1,15 +1,17 @@
 use std::io::{Read, Write};
+use std::convert;
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum ThriftType {
     Stop = 0,
     Void = 1,
     Bool = 2,
     Byte = 3,
+    Double = 4,
     I16 = 6,
     I32 = 8,
     U64 = 9,
     I64 = 10,
-    Double = 4,
     String = 11,
     Struct = 12,
     Map = 13,
@@ -17,11 +19,46 @@ pub enum ThriftType {
     List = 15
 }
 
+impl convert::From<i8> for ThriftType {
+    fn from(val: i8) -> ThriftType {
+        match val {
+            0 => ThriftType::Stop,
+            1 => ThriftType::Void,
+            2 => ThriftType::Bool,
+            3 => ThriftType::Byte,
+            4 => ThriftType::Double,
+            6 => ThriftType::I16,
+            8 => ThriftType::I32,
+            9 => ThriftType::U64,
+            10 => ThriftType::I64,
+            11 => ThriftType::String,
+            12 => ThriftType::Struct,
+            13 => ThriftType::Map,
+            14 => ThriftType::Set,
+            15 => ThriftType::List,
+            _ => panic!("Unexpected value")
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub enum ThriftMessageType {
     Call = 1,
     Reply = 2,
     Exception = 3,
     Oneway = 4
+}
+
+impl convert::From<i8> for ThriftMessageType {
+    fn from(val: i8) -> ThriftMessageType {
+        match val {
+            1 => ThriftMessageType::Call,
+            2 => ThriftMessageType::Reply,
+            3 => ThriftMessageType::Exception,
+            4 => ThriftMessageType::Oneway,
+            _ => panic!("Unexpected value for ThriftMessageType.")
+        }
+    }
 }
 
 pub trait Serializer {
@@ -94,6 +131,29 @@ pub trait ThriftSerializer {
     fn write_message_end(&mut self) -> Result<(), Self::TError> {
         Ok(())
     }
+}
+
+pub struct ThriftMessage {
+    pub name: String,
+    pub ty: ThriftMessageType,
+    pub seq: i16
+}
+
+pub struct ThriftField {
+    pub name: Option<String>,
+    pub ty: ThriftType,
+    pub seq: i16
+}
+
+pub trait ThriftDeserializer {
+    type TError = ();
+
+    fn read_message_begin(&mut self) -> Result<ThriftMessage, Self::TError>;
+    fn read_message_end(&mut self) -> Result<(), Self::TError>;
+    fn read_struct_begin(&mut self) -> Result<String, Self::TError>;
+    fn read_struct_end(&mut self) -> Result<(), Self::TError>;
+    fn read_field_begin(&mut self) -> Result<ThriftField, Self::TError>;
+    fn read_field_end(&mut self) -> Result<(), Self::TError>;
 }
 
 impl Serialize for bool {
