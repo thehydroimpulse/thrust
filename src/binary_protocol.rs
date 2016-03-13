@@ -251,3 +251,142 @@ impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Read};
+    use byteorder::{ReadBytesExt, BigEndian};
+    use protocol::{ThriftMessageType, ThriftType, ThriftSerializer, Serializer, Serialize, Deserializer};
+    use super::*;
+
+    #[test]
+    fn serialize_bool_true() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_bool(true);
+        }
+
+        assert_eq!(v[0], 1);
+    }
+
+    #[test]
+    fn serialize_bool_false() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_bool(false);
+        }
+
+        assert_eq!(v[0], 0);
+    }
+
+    #[test]
+    fn serialize_i8() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i8(5);
+        }
+
+        assert_eq!(v[0], 5);
+    }
+
+    #[test]
+    fn serialize_i8_neg() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i8(-5);
+        }
+
+        assert_eq!(v[0] as i8, -5);
+    }
+
+    #[test]
+    fn serialize_i16() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i16(900);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(900, cursor.read_i16::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn serialize_i16_neg() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i16(-900);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(-900, cursor.read_i16::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn serialize_i32() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i32(3000000);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(3000000, cursor.read_i32::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn serialize_i32_neg() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i32(-3000000);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(-3000000, cursor.read_i32::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn serialize_i64() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i64(33000000);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(33000000, cursor.read_i64::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn serialize_i64_neg() {
+        let mut v = Vec::new();
+        {
+            let mut s = BinarySerializer::new(&mut v);
+            s.serialize_i64(-33000000);
+        }
+
+        let mut cursor = Cursor::new(v);
+        assert_eq!(-33000000, cursor.read_i64::<BigEndian>().unwrap());
+    }
+
+    #[test]
+    fn protocol_begin() {
+        let mut v = Vec::new();
+        {
+            let mut proto = BinarySerializer::new(&mut v);
+            proto.write_message_begin("foobar", ThriftMessageType::Call);
+        }
+
+        let mut cursor = Cursor::new(v);
+        let version = THRIFT_VERSION_1 | ThriftMessageType::Call as i32;
+
+        assert_eq!(version, cursor.read_i32::<BigEndian>().unwrap());
+        // XXX Decode string and seqid.
+    }
+}
