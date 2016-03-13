@@ -157,6 +157,7 @@ pub trait ThriftSerializer {
     }
 }
 
+#[derive(Debug)]
 pub struct ThriftMessage {
     pub name: String,
     pub ty: ThriftMessageType,
@@ -179,7 +180,7 @@ pub trait ThriftDeserializer {
 }
 
 pub trait Deserialize: Sized {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error>;
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error> where D: Deserializer + ThriftDeserializer;
 }
 
 /// ```
@@ -192,13 +193,17 @@ pub trait Deserialize: Sized {
 /// assert_eq!(val, 100);
 /// ```
 impl Deserialize for u8 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_u8()
     }
 }
 
 impl Deserialize for bool {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_bool()
     }
 }
@@ -213,49 +218,65 @@ impl Deserialize for bool {
 /// assert_eq!(val, 100);
 /// ```
 impl Deserialize for i8 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_i8()
     }
 }
 
 impl Deserialize for u16 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_u16()
     }
 }
 
 impl Deserialize for i16 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_i16()
     }
 }
 
 impl Deserialize for u32 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_u32()
     }
 }
 
 impl Deserialize for i32 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_i32()
     }
 }
 
 impl Deserialize for u64 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_u64()
     }
 }
 
 impl Deserialize for i64 {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_i64()
     }
 }
 
 impl Deserialize for String {
-    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+    fn deserialize<D>(de: &mut D) -> Result<Self, Error>
+        where D: Deserializer + ThriftDeserializer
+    {
         de.deserialize_str()
     }
 }

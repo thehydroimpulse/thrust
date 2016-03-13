@@ -7,6 +7,7 @@ extern crate nom;
 extern crate lazy_static;
 extern crate mio;
 extern crate byteorder;
+extern crate tangle;
 
 pub use generator::Generator;
 use nom::{IResult};
