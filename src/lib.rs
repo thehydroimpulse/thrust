@@ -21,7 +21,7 @@ mod event_loop;
 mod reactor;
 mod protocol;
 mod binary_protocol;
-// mod service;
+mod service;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 

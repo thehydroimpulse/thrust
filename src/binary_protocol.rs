@@ -1,39 +1,12 @@
-use protocol::{Serializer, Deserializer, ThriftSerializer, ThriftField, ThriftMessage, ThriftDeserializer, ThriftMessageType, ThriftType};
+use protocol::{Serializer, Deserializer, ThriftSerializer, ThriftField, ThriftMessage, ThriftDeserializer, ThriftMessageType, ThriftType, Error};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
-use std::string::FromUtf8Error;
 use byteorder;
 use std::convert;
 
 pub const THRIFT_VERSION_1: i32 = 0x80010000;
 pub const THRIFT_VERSION_MASK: i32 = 0xffff0000;
 pub const THRIFT_TYPE_MASK: i32 = 0x000000ff;
-
-pub enum Error {
-    Byteorder(byteorder::Error),
-    Io(io::Error),
-    Utf8Error(FromUtf8Error),
-    BadVersion,
-    ProtocolVersionMissing
-}
-
-impl convert::From<byteorder::Error> for Error {
-    fn from(err: byteorder::Error) -> Error {
-        Error::Byteorder(err)
-    }
-}
-
-impl convert::From<FromUtf8Error> for Error {
-    fn from(err: FromUtf8Error) -> Error {
-        Error::Utf8Error(err)
-    }
-}
-
-impl convert::From<io::Error> for Error {
-    fn from(err: io::Error) -> Error {
-        Error::Io(err)
-    }
-}
 
 pub struct BinarySerializer<'a> {
     wr: &'a mut Write

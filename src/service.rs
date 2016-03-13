@@ -1,29 +1,46 @@
-use protocol::{ProtocolEncoder, ProtocolDecoder, BinaryProtocolEncoder, ThriftType, ThriftMessageType};
+use protocol::{Serializer, ThriftSerializer, Serialize, ThriftType, ThriftMessageType, Error};
+use binary_protocol::{BinarySerializer, BinaryDeserializer};
 
 pub trait Service {
-    fn query(&mut self, val: &str);
+    fn query(&mut self, val: bool);
+}
+
+pub struct QueryArgs {
+    val: bool
+}
+
+impl Serialize for QueryArgs {
+    fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
+        where S: Serializer + ThriftSerializer
+    {
+        try!(s.write_struct_begin("query_args"));
+
+        // for each field
+        try!(s.write_field_begin("val", ThriftType::Bool, 1));
+        try!(self.val.serialize(s));
+        try!(s.write_field_stop());
+        try!(s.write_field_end());
+
+        try!(s.write_struct_end());
+
+        Ok(())
+    }
 }
 
 pub struct RpcClient;
 
 impl Service for RpcClient {
-    fn query(&mut self, val: &str) {
+    fn query(&mut self, val: bool) {
         let mut v = Vec::new();
 
         {
-            let mut proto = BinaryProtocolEncoder::new(&mut v);
+            let mut proto = BinarySerializer::new(&mut v);
+            let args = QueryArgs {
+                val: val
+            };
 
             proto.write_message_begin("query", ThriftMessageType::Call);
-            proto.write_struct_begin("query_args");
-
-            proto.write_field_begin("q", ThriftType::String, 1);
-            proto.write_str(val);
-            proto.write_field_stop();
-
-            proto.write_field_end();
-            proto.write_struct_end();
-
-            // XXX: Write the arguments with `write_field_begin`
+            args.serialize(&mut proto);
             proto.write_message_end();
         }
     }
