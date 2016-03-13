@@ -16,11 +16,20 @@ fn dispatch_method_call<D>(msg: ThriftMessage, de: &mut D, service: &mut Service
         "query" => {
             let args: QueryArgs = try!(Deserialize::deserialize(de));
             Ok(service.query(args.val).map(|val| {
-                // XXX Write the whole message reply here.
                 let mut v = Vec::new();
                 {
                     let mut s = BinarySerializer::new(&mut v);
-                    val.serialize(&mut s);
+                    s.write_message_begin("query", ThriftMessageType::Reply);
+
+                    s.write_struct_begin("query_ret");
+
+                    s.write_field_begin("ret", ThriftType::Void, 1);
+                    s.write_field_stop();
+                    s.write_field_end();
+
+                    s.write_struct_end();
+
+                    s.write_message_end();
                 }
 
                 v
