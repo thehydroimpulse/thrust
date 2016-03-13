@@ -3,6 +3,7 @@ use std::convert;
 use byteorder;
 use std::string::FromUtf8Error;
 
+#[derive(Debug)]
 pub enum Error {
     Byteorder(byteorder::Error),
     Io(io::Error),
@@ -90,8 +91,6 @@ impl convert::From<i8> for ThriftMessageType {
 }
 
 pub trait Serializer {
-    type Error = ();
-
     fn serialize_bool(&mut self, val: bool) -> Result<(), Error>;
     fn serialize_str(&mut self, val: &str) -> Result<(), Error>;
     fn serialize_string(&mut self, val: String) -> Result<(), Error>;
@@ -109,8 +108,6 @@ pub trait Serializer {
 }
 
 pub trait Deserializer {
-    type Error = ();
-
     fn deserialize_bool(&mut self) -> Result<bool, Error>;
     fn deserialize_usize(&mut self) -> Result<usize, Error>;
     fn deserialize_isize(&mut self) -> Result<isize, Error>;
@@ -131,8 +128,6 @@ pub trait Serialize {
 }
 
 pub trait ThriftSerializer {
-    type TError = ();
-
     fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Error> {
         Ok(())
     }
@@ -175,14 +170,31 @@ pub struct ThriftField {
 }
 
 pub trait ThriftDeserializer {
-    type TError = ();
-
     fn read_message_begin(&mut self) -> Result<ThriftMessage, Error>;
     fn read_message_end(&mut self) -> Result<(), Error>;
     fn read_struct_begin(&mut self) -> Result<String, Error>;
     fn read_struct_end(&mut self) -> Result<(), Error>;
     fn read_field_begin(&mut self) -> Result<ThriftField, Error>;
     fn read_field_end(&mut self) -> Result<(), Error>;
+}
+
+pub trait Deserialize: Sized {
+    fn deserialize(de: &mut Deserializer) -> Result<Self, Error>;
+}
+
+/// ```
+/// use std::io::Cursor;
+/// use thrust::binary_protocol::BinaryDeserializer;
+/// use thrust::protocol::Deserialize;
+///
+/// let mut de = BinaryDeserializer::new(Cursor::new(vec![100u8]));
+/// let val: u8 = Deserialize::deserialize(&mut de).unwrap();
+/// assert_eq!(val, 100);
+/// ```
+impl Deserialize for u8 {
+    fn deserialize(de: &mut Deserializer) -> Result<Self, Error> {
+        de.deserialize_u8()
+    }
 }
 
 impl Serialize for bool {

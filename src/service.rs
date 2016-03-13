@@ -27,6 +27,19 @@ impl Serialize for QueryArgs {
     }
 }
 
+
+pub struct RpcServer;
+
+impl Service for RpcServer {
+    fn query(&mut self, val: bool) {
+
+    }
+}
+
+fn dispatch_query(service: &mut Service, args: QueryArgs) {
+    service.query(args.val);
+}
+
 pub struct RpcClient;
 
 impl Service for RpcClient {

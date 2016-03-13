@@ -19,8 +19,8 @@ mod ast;
 mod generator;
 mod event_loop;
 mod reactor;
-mod protocol;
-mod binary_protocol;
+pub mod protocol;
+pub mod binary_protocol;
 mod service;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;

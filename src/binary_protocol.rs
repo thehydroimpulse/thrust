@@ -21,7 +21,6 @@ impl<'a> BinarySerializer<'a> {
 }
 
 impl<'a> Serializer for BinarySerializer<'a> {
-    type Error = Error;
 
     fn serialize_bool(&mut self, val: bool) -> Result<(), Error> {
         if val {
@@ -91,9 +90,7 @@ impl<'a> Serializer for BinarySerializer<'a> {
 }
 
 impl<'a> ThriftSerializer for BinarySerializer<'a> {
-    type TError = Error;
-
-    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Self::TError> {
+    fn write_message_begin(&mut self, name: &str, message_type: ThriftMessageType) -> Result<(), Error> {
         let version = THRIFT_VERSION_1 | message_type as i32;
 
         try!(self.serialize_i32(version));
@@ -103,30 +100,30 @@ impl<'a> ThriftSerializer for BinarySerializer<'a> {
         Ok(())
     }
 
-    fn write_struct_begin(&mut self, name: &str) -> Result<(), Self::TError> {
+    fn write_struct_begin(&mut self, name: &str) -> Result<(), Error> {
         Ok(())
     }
 
-    fn write_struct_end(&mut self) -> Result<(), Self::TError> {
+    fn write_struct_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) -> Result<(), Self::TError> {
+    fn write_field_begin(&mut self, name: &str, ty: ThriftType, id: i16) -> Result<(), Error> {
         try!(self.serialize_i8(ty as i8));
         try!(self.serialize_i16(id));
         Ok(())
     }
 
-    fn write_field_end(&mut self) -> Result<(), Self::TError> {
+    fn write_field_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    fn write_field_stop(&mut self) -> Result<(), Self::TError> {
+    fn write_field_stop(&mut self) -> Result<(), Error> {
         try!(self.serialize_i8(ThriftType::Stop as i8));
         Ok(())
     }
 
-    fn write_message_end(&mut self) -> Result<(), Self::TError> {
+    fn write_message_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -135,9 +132,15 @@ pub struct BinaryDeserializer<R: Read + ReadBytesExt> {
     rd: R
 }
 
-impl<R: Read + ReadBytesExt> Deserializer for BinaryDeserializer<R> {
-    type Error = Error;
+impl<R: Read + ReadBytesExt> BinaryDeserializer<R> {
+    pub fn new(rd: R) -> BinaryDeserializer<R> {
+        BinaryDeserializer {
+            rd: rd
+        }
+    }
+}
 
+impl<R: Read + ReadBytesExt> Deserializer for BinaryDeserializer<R> {
     fn deserialize_bool(&mut self) -> Result<bool, Error> {
         Ok(try!(self.rd.read_i8()) != 0)
     }
@@ -199,9 +202,7 @@ impl<R: Read + ReadBytesExt> Deserializer for BinaryDeserializer<R> {
 }
 
 impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
-    type TError = Error;
-
-    fn read_message_begin(&mut self) -> Result<ThriftMessage, Self::TError> {
+    fn read_message_begin(&mut self) -> Result<ThriftMessage, Error> {
         let size: i32 = try!(self.deserialize_i32());
 
         if size < 0 {
@@ -220,19 +221,19 @@ impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
         }
     }
 
-    fn read_message_end(&mut self) -> Result<(), Self::TError> {
+    fn read_message_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    fn read_struct_begin(&mut self) -> Result<String, Self::TError> {
+    fn read_struct_begin(&mut self) -> Result<String, Error> {
         Ok("".to_string())
     }
 
-    fn read_struct_end(&mut self) -> Result<(), Self::TError> {
+    fn read_struct_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    fn read_field_begin(&mut self) -> Result<ThriftField, Self::TError> {
+    fn read_field_begin(&mut self) -> Result<ThriftField, Error> {
         let mut field = ThriftField {
             name: None,
             ty: ThriftType::from(try!(self.deserialize_i8())),
@@ -247,7 +248,7 @@ impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
         }
     }
 
-    fn read_field_end(&mut self) -> Result<(), Self::TError> {
+    fn read_field_end(&mut self) -> Result<(), Error> {
         Ok(())
     }
 }
