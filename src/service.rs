@@ -4,25 +4,26 @@ use binary_protocol::{BinarySerializer, BinaryDeserializer};
 use std::io::Cursor;
 use tangle::{Future, Async};
 use pipeline::MessagePipeline;
-use message_dispatcher::Dispatcher;
+use caller::Caller;
+use std::sync::mpsc::{Sender, Receiver, channel};
 
 pub trait Service {
     fn query(&mut self, val: bool) -> Future<()>;
 }
 
-pub struct DispatchService<'a> {
+pub struct ServiceCaller<'a> {
     service: &'a mut Service
 }
 
-impl<'a> DispatchService<'a> {
-    pub fn new(service: &'a mut Service) -> DispatchService<'a> {
-        DispatchService {
+impl<'a> ServiceCaller<'a> {
+    pub fn new(service: &'a mut Service) -> ServiceCaller<'a> {
+        ServiceCaller {
             service: service
         }
     }
 }
 
-impl<'a, D> Dispatcher<D> for DispatchService<'a>
+impl<'a, D> Caller<D> for ServiceCaller<'a>
     where D: Deserializer + ThriftDeserializer
 {
     fn call(&mut self, de: &mut D, msg: ThriftMessage) -> Result<Future<Vec<u8>>, Error> {
@@ -89,10 +90,6 @@ impl Serialize for QueryArgs {
     }
 }
 
-fn dispatch_query(service: &mut Service, args: QueryArgs) {
-    service.query(args.val);
-}
-
 pub struct RpcClient {
     buf: Vec<u8>
 }
@@ -141,18 +138,8 @@ fn call_query() {
 
     let mut de = BinaryDeserializer::new(Cursor::new(buf));
     let mut s = Server;
-    let mut pipe = MessagePipeline::new(de);
-    // XXX: Expect a future as return value.
-    //
-    // ```notrust
-    // pipe.run().and_then(|res| {
-    //     // ...
-    // })
-    // ```
-    //
-    // Where `res` is the serialized response.
-    let mut dispatcher = DispatchService::new(&mut s);
-    pipe.run(&mut dispatcher).unwrap().and_then(|v| {
+    let mut caller = ServiceCaller::new(&mut s);
+    MessagePipeline::new(de).run(&mut caller).unwrap().and_then(|v| {
         println!("{:?}", v);
         Async::Ok(())
     });

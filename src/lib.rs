@@ -24,7 +24,8 @@ pub mod protocol;
 pub mod binary_protocol;
 mod service;
 mod pipeline;
-mod message_dispatcher;
+mod caller;
+mod dispatcher;
 
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 
