@@ -3,41 +3,56 @@ Deserialize, Serialize, ThriftType, ThriftMessageType, Error};
 use binary_protocol::{BinarySerializer, BinaryDeserializer};
 use std::io::Cursor;
 use tangle::{Future, Async};
+use pipeline::MessagePipeline;
+use message_dispatcher::Dispatcher;
 
 pub trait Service {
     fn query(&mut self, val: bool) -> Future<()>;
 }
 
-// Generated
-fn dispatch_method_call<D>(msg: ThriftMessage, de: &mut D, service: &mut Service) -> Result<Future<Vec<u8>>, Error>
+pub struct DispatchService<'a> {
+    service: &'a mut Service
+}
+
+impl<'a> DispatchService<'a> {
+    pub fn new(service: &'a mut Service) -> DispatchService<'a> {
+        DispatchService {
+            service: service
+        }
+    }
+}
+
+impl<'a, D> Dispatcher<D> for DispatchService<'a>
     where D: Deserializer + ThriftDeserializer
 {
-    match &*msg.name {
-        "query" => {
-            let args: QueryArgs = try!(Deserialize::deserialize(de));
-            Ok(service.query(args.val).map(|val| {
-                let mut v = Vec::new();
-                {
-                    let mut s = BinarySerializer::new(&mut v);
-                    s.write_message_begin("query", ThriftMessageType::Reply);
+    fn call(&mut self, de: &mut D, msg: ThriftMessage) -> Result<Future<Vec<u8>>, Error> {
+        match &*msg.name {
+            "query" => {
+                let args: QueryArgs = try!(Deserialize::deserialize(de));
+                Ok(self.service.query(args.val).map(|val| {
+                    let mut v = Vec::new();
+                    {
+                        let mut s = BinarySerializer::new(&mut v);
+                        s.write_message_begin("query", ThriftMessageType::Reply);
 
-                    s.write_struct_begin("query_ret");
+                        s.write_struct_begin("query_ret");
 
-                    s.write_field_begin("ret", ThriftType::Void, 1);
-                    s.write_field_stop();
-                    s.write_field_end();
+                        s.write_field_begin("ret", ThriftType::Void, 1);
+                        s.write_field_stop();
+                        s.write_field_end();
 
-                    s.write_struct_end();
+                        s.write_struct_end();
 
-                    s.write_message_end();
-                }
+                        s.write_message_end();
+                    }
 
-                v
-            }))
-        },
-        _ => {
-            unimplemented!()
-            // Return Err.
+                    v
+                }))
+            },
+            _ => {
+                unimplemented!()
+                // Return Err.
+            }
         }
     }
 }
@@ -107,43 +122,6 @@ impl Service for RpcClient {
     }
 }
 
-pub struct MessagePipeline<'a, D> {
-    de: D,
-    service: &'a mut Service
-}
-
-impl<'a, D> MessagePipeline<'a, D>
-    where D: Deserializer + ThriftDeserializer
-{
-    pub fn new(de: D, service: &'a mut Service) -> MessagePipeline<D> {
-        MessagePipeline {
-            de: de,
-            service: service
-        }
-    }
-
-    /// Dispatch the incoming RPC call to the respective service method.
-    pub fn dispatch(&mut self, msg: ThriftMessage) -> Result<Future<Vec<u8>>, Error> {
-        dispatch_method_call(msg, &mut self.de, self.service)
-    }
-
-    /// XXX: The fn signature should be `Result<Future<Vec<u8>>, Error>` where the serialized
-    /// response is returned into the future.
-    pub fn run(&mut self) -> Result<Future<Vec<u8>>, Error> {
-        let msg = try!(self.de.read_message_begin());
-
-        match msg.ty {
-            // Dispatch on an RPC method call.
-            ThriftMessageType::Call => {
-                Ok(try!(self.dispatch(msg)))
-            },
-            _ => {
-                panic!("unexpected");
-            }
-        }
-    }
-}
-
 #[test]
 fn call_query() {
     let mut buf = {
@@ -163,7 +141,7 @@ fn call_query() {
 
     let mut de = BinaryDeserializer::new(Cursor::new(buf));
     let mut s = Server;
-    let mut pipe = MessagePipeline::new(de, &mut s);
+    let mut pipe = MessagePipeline::new(de);
     // XXX: Expect a future as return value.
     //
     // ```notrust
@@ -173,7 +151,8 @@ fn call_query() {
     // ```
     //
     // Where `res` is the serialized response.
-    pipe.run().unwrap().and_then(|v| {
+    let mut dispatcher = DispatchService::new(&mut s);
+    pipe.run(&mut dispatcher).unwrap().and_then(|v| {
         println!("{:?}", v);
         Async::Ok(())
     });
