@@ -1,6 +1,7 @@
 use protocol::{Serializer, Deserializer, ThriftSerializer, ThriftField, ThriftMessage, ThriftDeserializer, ThriftMessageType, ThriftType, Error};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
+use std::iter;
 use byteorder;
 use std::convert;
 
@@ -186,10 +187,11 @@ impl<R: Read + ReadBytesExt> Deserializer for BinaryDeserializer<R> {
     }
 
     fn deserialize_bytes(&mut self) -> Result<Vec<u8>, Error> {
-        let len = try!(self.deserialize_i32());
-        let mut buf = Vec::with_capacity(len as usize);
+        let len = try!(self.deserialize_i32()) as usize;
+        let mut buf = Vec::with_capacity(len);
 
-        try!(self.rd.read_exact(&mut buf));
+        buf.extend(iter::repeat(0).take(len));
+        try!(self.rd.read(&mut buf));
 
         Ok(buf)
     }
