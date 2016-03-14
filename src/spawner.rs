@@ -32,6 +32,12 @@ impl Spawner {
             senders: senders
         }
     }
+
+    pub fn (mut self) {
+        for handle in 0..self.handles.len() {
+            handle.join();
+        }
+    }
 }
 
 #[cfg(test)]

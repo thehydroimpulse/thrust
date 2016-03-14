@@ -37,6 +37,22 @@ thrust hello.thrift .
 The first argument is the input thrift file and the second is the *path* where you want your
 Rust file to be written to. The filename will be based on the Rust namespace in your thrift file `namespace rust <name>`.
 
+## Spawning Event Loops
+
+```rust
+use thrust::Spawner;
+
+fn main() {
+  // By default, this will run as many event loop threads as you have CPU cores.
+  let spawner = Spawner::new(None);
+
+  // ...
+
+  // Block the main thread until all event loops terminate.
+  spawner.join();
+}
+```
+
 ## License
 
 MIT &mdash; go ham!
