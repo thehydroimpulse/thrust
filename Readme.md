@@ -11,6 +11,7 @@ A Rust implementation of the [Apache Thrift](https://thrift.apache.org/) protoco
 - Built on-top of Asynchronous I/O via Mio.
 - Heavily uses Futures to manage asynchronous code.
 - Multiplexing multiple RPC services on a single event-loop.
+- Automatically spawn an `EventLoop` per CPU core.
 
 ## Installing
 
@@ -39,3 +40,4 @@ Rust file to be written to. The filename will be based on the Rust namespace in 
 ## License
 
 MIT &mdash; go ham!
+

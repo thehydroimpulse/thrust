@@ -10,6 +10,7 @@ extern crate tangle;
 extern crate rand;
 extern crate slab;
 extern crate bytes;
+extern crate num_cpus;
 
 use nom::{IResult};
 use std::str;
@@ -29,9 +30,12 @@ mod runner;
 mod dispatcher;
 mod request;
 mod result;
+mod transport;
+mod spawner;
 
 pub use generator::Generator;
 pub use result::{ThrustResult, ThrustError};
+pub use spawner::Spawner;
 pub use protocol::{Serializer, Serialize, Deserialize, ThriftSerializer, ThriftDeserializer};
 
 /// XXX: Replace with the new `ThrustResult` type.

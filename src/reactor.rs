@@ -135,6 +135,9 @@ impl Write for Connection {
     }
 }
 
+/// XXX: Generalize the listener. Allow multiple listeners
+/// and multiple connections so we can multiplex a bunch
+/// of Thrift services in one `EventLoop`.
 pub struct Reactor {
     listener: Option<TcpListener>,
     connections: Slab<Connection, Token>,
