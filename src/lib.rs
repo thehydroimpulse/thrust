@@ -1,5 +1,4 @@
 #![feature(associated_type_defaults)]
-extern crate serde;
 
 #[macro_use]
 extern crate nom;
@@ -8,8 +7,10 @@ extern crate lazy_static;
 extern crate mio;
 extern crate byteorder;
 extern crate tangle;
+extern crate rand;
+extern crate slab;
+extern crate bytes;
 
-pub use generator::Generator;
 use nom::{IResult};
 use std::str;
 use std::convert;
@@ -24,9 +25,16 @@ pub mod protocol;
 pub mod binary_protocol;
 mod service;
 mod pipeline;
-mod caller;
+mod runner;
 mod dispatcher;
+mod request;
+mod result;
 
+pub use generator::Generator;
+pub use result::{ThrustResult, ThrustError};
+pub use protocol::{Serializer, Serialize, Deserialize, ThriftSerializer, ThriftDeserializer};
+
+/// XXX: Replace with the new `ThrustResult` type.
 pub type ThriftResult<T> = Result<T, ThriftCompilerError>;
 
 #[derive(Debug)]

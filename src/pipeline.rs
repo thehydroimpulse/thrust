@@ -1,6 +1,6 @@
 use protocol::{Error, ThriftDeserializer, Deserializer, ThriftMessageType, ThriftMessage};
 use tangle::{Future, Async};
-use caller::Caller;
+use runner::Runner;
 
 pub struct MessagePipeline<D> {
     de: D
@@ -17,13 +17,13 @@ impl<D> MessagePipeline<D>
 
     /// XXX: The fn signature should be `Result<Future<Vec<u8>>, Error>` where the serialized
     /// response is returned into the future.
-    pub fn run(&mut self, dispatcher: &mut Caller<D>) -> Result<Future<Vec<u8>>, Error> {
+    pub fn run(&mut self, runner: &mut Runner<D>) -> Result<Future<Vec<u8>>, Error> {
         let msg = try!(self.de.read_message_begin());
 
         match msg.ty {
             // Dispatch on an RPC method call.
             ThriftMessageType::Call => {
-                dispatcher.call(&mut self.de, msg)
+                runner.run(&mut self.de, msg)
             },
             _ => {
                 panic!("unexpected");
