@@ -33,8 +33,8 @@ impl Spawner {
         }
     }
 
-    pub fn (mut self) {
-        for handle in 0..self.handles.len() {
+    pub fn join(mut self) {
+        for handle in self.handles.into_iter() {
             handle.join();
         }
     }

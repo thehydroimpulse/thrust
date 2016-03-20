@@ -5,6 +5,7 @@ use protocol::{Serializer, ThriftSerializer, ThriftMessage, ThriftDeserializer, 
 Deserialize, Serialize, ThriftType, ThriftMessageType, Error};
 use binary_protocol::{BinarySerializer, BinaryDeserializer};
 use tangle::{Future, Async};
+use server::{Server};
 
 use pipeline::MessagePipeline;
 use runner::Runner;

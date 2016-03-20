@@ -17,6 +17,7 @@ use std::str;
 use std::convert;
 use std::string;
 
+mod server;
 mod parser;
 mod ast;
 mod generator;

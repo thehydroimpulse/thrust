@@ -53,6 +53,55 @@ fn main() {
 }
 ```
 
+## Creating a Thrift Service
+
+Thrust supports creating Thrift services, backed by non-blocking TCP sockets with Mio.
+
+```thrift
+namespace rust thrift;
+// Start by defining a service in your Thrift file.
+service Flock {
+  bool isLoggedIn(1: string token);
+}
+```
+
+After using Thrust to generate the service in Rust, we can start using it.
+
+```rust
+extern crate thrust;
+// Tangle is a futures implementation
+extern crate tangle;
+
+// The generated Rust module.
+use thrift::Flock;
+
+use thrust::{Spawner, Server};
+use tangle::{Future, Async};
+
+pub struct FlockService;
+
+impl Flock for FlockService {
+  fn isLoggedIn(&mut self, token: String) -> Future<bool> {
+    if &*token == "123" {
+      Async::Ok(true)
+    } else {
+      Async::Ok(false)
+    }
+  }
+}
+
+fn main() {
+  // Create a Spawner to manage Mio event loops.
+  let mut spawner = Spawner::new(None);
+
+  Server::run(&spawner, FlockService);
+
+  spawner.join();
+
+
+}
+```
+
 ## License
 
 MIT &mdash; go ham!
