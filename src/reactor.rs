@@ -3,7 +3,7 @@ use mio;
 use mio::{Token, Handler, EventLoop, EventSet, PollOpt, TryRead, TryWrite, Evented};
 use slab::Slab;
 use std::io::{self, Cursor, Write, Read};
-use std::net::SocketAddr;
+use std::net::{self, SocketAddr};
 use std::time::Duration;
 use std::mem;
 use std::thread;
@@ -11,8 +11,10 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use result::{ThrustResult, ThrustError};
 use tangle::{Future, Async};
 use bytes::buf::Buf;
+use std::collections::HashMap;
 
 pub enum Message {
+    InitServer(net::TcpListener, SocketAddr, Sender<Dispatch>),
     Rpc(Vec<u8>),
     Shutdown,
     Close
@@ -139,72 +141,55 @@ impl Write for Connection {
 /// and multiple connections so we can multiplex a bunch
 /// of Thrift services in one `EventLoop`.
 pub struct Reactor {
-    listener: Option<TcpListener>,
-    connections: Slab<Connection, Token>,
-    buf: Vec<TcpStream>,
-    sender: Sender<Dispatch>
+    listeners: HashMap<Token, TcpListener>,
+    connections: HashMap<Token, Connection>,
+    sender: Sender<Dispatch>,
+    servers: Vec<Sender<Dispatch>>,
+    current_token: usize
 }
 
 impl Reactor {
     pub fn new(sender: Sender<Dispatch>) -> Self {
         Reactor {
-            listener: None,
-            connections: Slab::new_starting_at(Token(1), 1024),
-            buf: Vec::new(),
-            sender: sender
+            listeners: HashMap::new(),
+            connections: HashMap::new(),
+            sender: sender,
+            servers: Vec::new(),
+            current_token: 0
         }
-    }
-
-    pub fn connect(&mut self, addr: SocketAddr) -> ThrustResult<()> {
-        let mut stream = try!(TcpStream::connect(&addr));
-
-        self.buf.push(stream);
-        Ok(())
-    }
-
-    pub fn server(mut self, addr: SocketAddr) -> ThrustResult<Self> {
-        let mut listener = try!(TcpListener::bind(&addr));
-
-        self.listener = Some(listener);
-        Ok(self)
     }
 
     pub fn run(&mut self) -> ThrustResult<(EventLoop<Self>, mio::Sender<Message>)> {
         let mut event_loop = try!(EventLoop::new());
 
-        if let &Some(ref listener) = &self.listener {
-            try!(event_loop.register(listener, Token(0), EventSet::readable(),
-                            PollOpt::edge()));
-        }
+        // let mut buf = mem::replace(&mut self.buf, vec![]);
+        // for stream in buf.into_iter() {
+        //     let clone = self.sender.clone();
+        //     let token = self.connections.insert_with(|token| {
+        //         Connection::new(stream, token, clone)
+        //     }).expect("Failed to insert a new connection in the slab");
 
-        let mut buf = mem::replace(&mut self.buf, vec![]);
-        for stream in buf.into_iter() {
-            let clone = self.sender.clone();
-            let token = self.connections.insert_with(|token| {
-                Connection::new(stream, token, clone)
-            }).expect("Failed to insert a new connection in the slab");
-
-            self.connections[token].register(&mut event_loop, token);
-        }
+        //     self.connections[token].register(&mut event_loop, token);
+        // }
 
         let sender = event_loop.channel();
         Ok((event_loop, sender))
     }
 
-    pub fn accept_connection(&mut self, event_loop: &mut EventLoop<Self>) {
-        if let Some(ref listener) = self.listener {
-            match listener.accept() {
-                Ok(Some(socket)) => {
-                    let (stream, _) = socket;
-                    let clone = self.sender.clone();
-                    let token = self.connections.insert_with(|token| {
-                        Connection::new(stream, token, clone)
-                    }).expect("Failed to insert a new connection in the slab");
+    pub fn accept_connection(&mut self, event_loop: &mut EventLoop<Self>, token: Token) {
+        let mut listener = self.listeners.get_mut(&token).unwrap();
+        match listener.accept() {
+            Ok(Some(socket)) => {
+                let (stream, _) = socket;
+                let clone = self.sender.clone();
+                let new_token = Token(self.current_token);
+                let mut conn = Connection::new(stream, new_token, clone);
+                conn.register(event_loop, new_token);
 
-                    self.connections[token].register(event_loop, token);
-                },
-                _ => {}
-            }
+                self.connections.insert(new_token, conn);
+                self.current_token += 1;
+            },
+            _ => {}
         }
     }
 }
@@ -223,12 +208,12 @@ impl Handler for Reactor {
             return;
         }
 
-        if events.is_readable() && Token(0) == token {
-            self.accept_connection(event_loop);
+        if events.is_readable() && self.listeners.contains_key(&token) {
+            self.accept_connection(event_loop, token);
             return;
         }
 
-        self.connections[token].ready(event_loop, events);
+        self.connections.get_mut(&token).unwrap().ready(event_loop, events);
     }
 
     fn timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Timeout) {
@@ -237,10 +222,17 @@ impl Handler for Reactor {
     fn notify(&mut self, event_loop: &mut EventLoop<Self>, msg: Message) {
         match msg {
             Message::Rpc(data) => {
-                self.connections[Token(1)].write(&*data);
+                self.connections.get_mut(&Token(1)).unwrap().write(&*data);
             },
             Message::Shutdown => {
                 event_loop.shutdown();
+            },
+            Message::InitServer(listener, addr, tx) => {
+                let mut lis = TcpListener::from_listener(listener, &addr).unwrap();
+                self.servers.push(tx);
+
+                event_loop.register(&lis, Token(self.current_token), EventSet::readable(), PollOpt::edge()).unwrap();
+                self.current_token += 1;
             },
             _ => {}
         }
@@ -254,53 +246,4 @@ mod tests {
     use std::sync::mpsc::{Receiver, Sender, channel};
     use tangle::{Future, Async};
     use std::thread;
-
-    #[test]
-    fn create_reactor() {
-        let (tx, rx) = channel();
-        let addr = "127.0.0.1:5566".parse().unwrap();
-        let mut reactor = Reactor::new(tx).server(addr).unwrap();
-
-        let (mut event_loop, _) = reactor.run().expect("Error trying to run the Reactor");
-        // event_loop.run(&mut reactor);
-    }
-
-    #[test]
-    fn connect_client() {
-        thread::spawn(move || {
-            let (tx, rx) = channel();
-            let addr = "127.0.0.1:5567".parse().unwrap();
-            let mut reactor = Reactor::new(tx).server(addr).unwrap();
-
-            let (mut event_loop, sender) = reactor.run().expect("Error trying to run the Reactor");
-
-            thread::spawn(move || {
-                for msg in rx.iter() {
-                    match msg {
-                        Dispatch::Data(buf) => {
-                            assert_eq!(&*buf, &[1, 2, 3]);
-                            sender.send(Message::Shutdown);
-                        }
-                    }
-                }
-            });
-
-            event_loop.run(&mut reactor);
-        });
-
-        let (tx, rx) = channel();
-        let addr = "127.0.0.1:5567".parse().unwrap();
-        let mut reactor = Reactor::new(tx);
-
-        reactor.connect(addr).unwrap();
-
-        let (mut event_loop, sender) = reactor.run().expect("Error trying to run the Reactor");
-
-        thread::spawn(move || {
-            sender.send(Message::Rpc(vec![1, 2, 3]));
-            sender.send(Message::Shutdown);
-        });
-
-        event_loop.run(&mut reactor);
-    }
 }

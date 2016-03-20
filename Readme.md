@@ -97,8 +97,6 @@ fn main() {
   Server::run(&spawner, FlockService);
 
   spawner.join();
-
-
 }
 ```
 

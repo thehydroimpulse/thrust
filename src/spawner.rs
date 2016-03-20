@@ -33,6 +33,10 @@ impl Spawner {
         }
     }
 
+    pub fn get_senders(&self) -> Vec<Sender<Message>> {
+        self.senders.clone()
+    }
+
     pub fn join(mut self) {
         for handle in self.handles.into_iter() {
             handle.join();
