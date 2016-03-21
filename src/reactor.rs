@@ -1,7 +1,6 @@
 use mio::tcp::*;
 use mio;
 use mio::{Token, Handler, EventLoop, EventSet, PollOpt, TryRead, TryWrite, Evented};
-use slab::Slab;
 use std::io::{self, Cursor, Write, Read};
 use std::net::{self, SocketAddr};
 use std::time::Duration;
@@ -11,7 +10,6 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use result::{ThrustResult, ThrustError};
 use tangle::{Future, Async};
 use bytes::buf::Buf;
-use rand;
 use std::collections::HashMap;
 
 /// Communication into the Mio event loop happens with a `Message`. For each new Mio
@@ -32,7 +30,9 @@ pub enum Message {
     /// Initiate an `Rpc` request. Each request needs to know which `Token` the respective
     /// `Connection` is associated with. The `Reactor` also knows nothing about Thrift
     /// and simply works at the binary level.
-    Rpc(usize, Vec<u8>),
+    ///
+    /// An `Rpc` message is also used for replying to an RPC call.
+    Rpc(Token, Vec<u8>),
     /// Completely shutdown the `Reactor` and event loop. All current listeners
     /// and connections will be dropped.
     Shutdown
@@ -47,10 +47,12 @@ pub enum Dispatch {
     ///
     /// This is used to send RPC calls or further differentiate each resource outside the
     /// event loops.
-    Id(usize),
+    Id(Token),
     /// When a socket has been read, the `Reactor` will send the `Dispatch::Data` message
     /// to the associating channel.
-    Data(Vec<u8>)
+    ///
+    /// We also associate any incoming data with the Token of the responsible socket.
+    Data(Token, Vec<u8>)
 }
 
 pub enum Timeout {
@@ -123,7 +125,7 @@ impl Connection {
 
     pub fn readable(&mut self) -> ThrustResult<()> {
         while let Ok(buf) = self.read() {
-            self.chan.send(Dispatch::Data(buf));
+            self.chan.send(Dispatch::Data(self.token, buf));
         }
 
         self.state = State::Writing;
@@ -165,43 +167,78 @@ impl Write for Connection {
     }
 }
 
-/// XXX: Generalize the listener. Allow multiple listeners
-/// and multiple connections so we can multiplex a bunch
-/// of Thrift services in one `EventLoop`.
+/// The `Reactor` is the component that interacts with networking. The reactor is
+/// built around Mio's event loop and manages both TcpListeners and TcpStreams.
+///
+/// The reactor isn't responsible for anything Thrift related, so it doesn't know
+/// about parsing, protocols, serialization, etc... All it's responsible for
+/// is sending and receiving data from various connections and dispatching them
+/// to the appropriate channels.
+///
+/// To communicate into the event loop, you use a copy of Mio's `Sender` channel
+/// type to send `Message`s. These will be intercepted in the event loop and processed.
+///
+/// Things you might send to the `Reactor` through this mechanism:
+///
+/// 1. Binding a new TCP listener &mdash; Each reactor is capable of handling an unbounded
+/// number of listeners, who will all be able to accept new sockets.
+///
+/// Binding a new listener requires that you have already established a blocking variant
+/// through `net::TcpListener`. The listener will be converted to Mio's non-blocking variant.
+///
+/// ```notrust
+/// use std::net::TcpListener;
+/// use std::sync::mpsc::channel;
+///
+/// // The channel is used as a channel. Any socket being accepted
+/// // by this listener will also use this channel (the sender part).
+/// let (tx, rx) = channel();
+/// let listener = TcpListener::bind("127.0.0.1:4566").unwrap();
+/// let addr = "127.0.0.1:4566".parse().unwrap();
+///
+/// reactor_sender.send(Message::Bind(listener, addr, tx));
+/// ```
+///
+/// 2. Connecting to a remote TCP server and establishing a new non-blocking `TcpStream`.
+///
+/// ```notrust
+/// use std::sync::mpsc::channel;
+///
+/// // The callback channel on the single socket.
+/// let (tx, rx) = channel();
+/// let addr = "127.0.0.1::4566".parse().unwrap();
+/// reactor_sender.send(Message::Connect(addr, tx));
+/// ```
+///
+///
+/// 3. Sending RPC calls (initiating or reply) to a socket. Instead of writing or reading
+/// primitives, we boil everything down to Rpc or Data messages, each with an associative Token
+/// to mark the responsible `TcpStream` or `Connection`.
+///
+/// ```notrust
+/// reactor_sender.send(Token(1), vec![0, 1, 3, 4]);
+/// ```
 pub struct Reactor {
     listeners: HashMap<Token, TcpListener>,
     connections: HashMap<Token, Connection>,
-    sender: Sender<Dispatch>,
+    /// Channels that are sent from `::Bind` messages to establish a listener will
+    /// be appended in this map. All subsequent sockets being accepted from the listener
+    /// will use the same sender channel to consolidate communications.
     servers: HashMap<Token, Sender<Dispatch>>,
+    /// The `Reactor` manages a count of the number of tokens, the number being
+    /// the token used for the next allocated resource. Tokens are used sequentially
+    /// across both listeners and connections.
     current_token: usize
 }
 
 impl Reactor {
-    pub fn new(sender: Sender<Dispatch>) -> Self {
+    pub fn new() -> Self {
         Reactor {
             listeners: HashMap::new(),
             connections: HashMap::new(),
-            sender: sender,
             servers: HashMap::new(),
             current_token: 0
         }
-    }
-
-    pub fn run(&mut self) -> ThrustResult<(EventLoop<Self>, mio::Sender<Message>)> {
-        let mut event_loop = try!(EventLoop::new());
-
-        // let mut buf = mem::replace(&mut self.buf, vec![]);
-        // for stream in buf.into_iter() {
-        //     let clone = self.sender.clone();
-        //     let token = self.connections.insert_with(|token| {
-        //         Connection::new(stream, token, clone)
-        //     }).expect("Failed to insert a new connection in the slab");
-
-        //     self.connections[token].register(&mut event_loop, token);
-        // }
-
-        let sender = event_loop.channel();
-        Ok((event_loop, sender))
     }
 
     pub fn accept_connection(&mut self, event_loop: &mut EventLoop<Self>, token: Token) {
@@ -253,13 +290,14 @@ impl Handler for Reactor {
         }
     }
 
+    /// XXX: Timeouts would be useful to implement.
     fn timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Timeout) {
     }
 
     fn notify(&mut self, event_loop: &mut EventLoop<Self>, msg: Message) {
         match msg {
             Message::Rpc(id, data) => {
-                self.connections.get_mut(&Token(id)).expect("connection was not found.").write(&*data);
+                self.connections.get_mut(&id).expect("connection was not found.").write(&*data);
             },
             Message::Shutdown => {
                 event_loop.shutdown();
@@ -267,7 +305,7 @@ impl Handler for Reactor {
             Message::Connect(addr, tx) => {
                 let mut mio_stream = TcpStream::connect(&addr).expect("MIO ERR");
                 let new_token = Token(self.current_token);
-                tx.send(Dispatch::Id(self.current_token));
+                tx.send(Dispatch::Id(new_token));
                 let mut conn = Connection::new(mio_stream, new_token, tx);
 
                 self.connections.insert(new_token, conn);
@@ -281,6 +319,7 @@ impl Handler for Reactor {
             Message::Bind(listener, addr, tx) => {
                 let token = Token(self.current_token);
                 let mut lis = TcpListener::from_listener(listener, &addr).unwrap();
+                tx.send(Dispatch::Id(token));
                 self.servers.insert(token, tx);
 
                 event_loop.register(&lis, token, EventSet::readable(), PollOpt::edge()).unwrap();
@@ -293,7 +332,7 @@ impl Handler for Reactor {
 
 #[cfg(test)]
 mod tests {
-    use mio::EventLoop;
+    use mio::{EventLoop, Token};
     use super::*;
     use std::io::Write;
     use std::sync::mpsc::{Receiver, Sender, channel};
@@ -305,8 +344,7 @@ mod tests {
     #[test]
     fn create_reactor() {
         let (assert_tx, assert_rx) = channel();
-        let (tx, rx) = channel();
-        let mut reactor = Reactor::new(tx);
+        let mut reactor = Reactor::new();
         let mut event_loop = EventLoop::new().unwrap();
         let sender = event_loop.channel();
 
@@ -333,15 +371,16 @@ mod tests {
         let server = thread::spawn(move || {
             for msg in r.iter() {
                 match msg {
-                    Dispatch::Data(msg) => {
-                        assert_tx.send(msg).expect("Could not assert_tx");
+                    Dispatch::Data(id, msg) => {
+                        assert_tx.send((id, msg)).expect("Could not assert_tx");
                     },
                     _ => {}
                 }
             }
         });
 
-        let v = assert_rx.recv().expect("Error trying to assert reactor test.");
+        let (new_id, v) = assert_rx.recv().expect("Error trying to assert reactor test.");
+        assert_eq!(new_id, Token(2));
         assert_eq!(v.len(), 3);
         assert_eq!(v, b"abc");
     }

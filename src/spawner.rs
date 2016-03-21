@@ -16,13 +16,12 @@ impl Spawner {
         let mut senders = Vec::with_capacity(num);
 
         for i in 0..num {
-            let (tx, rx) = channel();
             let mut event_loop = EventLoop::new().unwrap();
 
             senders.push(event_loop.channel());
 
             handles.push(thread::spawn(move || {
-                let mut reactor = Reactor::new(tx);
+                let mut reactor = Reactor::new();
                 event_loop.run(&mut reactor);
             }));
         }
