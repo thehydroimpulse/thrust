@@ -46,7 +46,7 @@ impl<R> Server<R>
                 // on if it connected successfully or threw an error. It will
                 // be converted to a non-blocking socket before it's used.
                 let mut listener = TcpListener::bind(addr).unwrap();
-                sender.send(Message::InitServer(listener, addr, tx.clone()));
+                sender.send(Message::Bind(listener, addr, tx.clone()));
             }
 
             for msg in rx.iter() {

@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables, dead_code, unused_must_use, unused_mut)]
 #![feature(associated_type_defaults)]
 
 #[macro_use]
