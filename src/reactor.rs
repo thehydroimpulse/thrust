@@ -216,7 +216,7 @@ impl Write for Connection {
 /// to mark the responsible `TcpStream` or `Connection`.
 ///
 /// ```notrust
-/// reactor_sender.send(Token(1), vec![0, 1, 3, 4]);
+/// reactor_sender.send(Message::Rpc(Token(1), vec![0, 1, 3, 4]));
 /// ```
 pub struct Reactor {
     listeners: HashMap<Token, TcpListener>,
@@ -355,21 +355,24 @@ mod tests {
         // Establish a local TcpListener.
         let addr: SocketAddr = "127.0.0.1:5543".parse().unwrap();
         let listener = TcpListener::bind(addr.clone()).unwrap();
-        let (s, r) = channel();
+        let (rpc_server_tx, rpc_server_rx) = channel();
 
-        sender.send(Message::Bind(listener, addr.clone(), s.clone()));
+        // Create a new non-blocking tcp server.
+        sender.send(Message::Bind(listener, addr.clone(), rpc_server_tx.clone()));
 
-        // Connect to that socket.
-        let (rpc_id_tx, rpc_id_rx) = channel();
-        sender.send(Message::Connect(addr, rpc_id_tx));
-        let id = match rpc_id_rx.recv().unwrap() {
+        let (rpc_client_tx, rpc_client_rx) = channel();
+
+        sender.send(Message::Connect(addr, rpc_client_tx));
+
+        let client_id = match rpc_client_rx.recv().unwrap() {
             Dispatch::Id(n) => n,
             _ => panic!("Expected to receive the Connection id/token.")
         };
-        sender.send(Message::Rpc(id, b"abc".to_vec()));
+
+        sender.send(Message::Rpc(client_id, b"abc".to_vec()));
 
         let server = thread::spawn(move || {
-            for msg in r.iter() {
+            for msg in rpc_server_rx.iter() {
                 match msg {
                     Dispatch::Data(id, msg) => {
                         assert_tx.send((id, msg)).expect("Could not assert_tx");
@@ -383,5 +386,17 @@ mod tests {
         assert_eq!(new_id, Token(2));
         assert_eq!(v.len(), 3);
         assert_eq!(v, b"abc");
+
+        // Send a "response" back.
+        sender.send(Message::Rpc(new_id, b"bbb".to_vec()));
+
+
+        match rpc_client_rx.recv().unwrap() {
+            Dispatch::Data(id, v) => {
+                assert_eq!(id, client_id);
+                assert_eq!(v, b"bbb");
+            },
+            _ => panic!("Unexpected case.")
+        }
     }
 }
