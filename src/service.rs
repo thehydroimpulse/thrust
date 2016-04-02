@@ -10,26 +10,26 @@ use server::{Server};
 use pipeline::MessagePipeline;
 use runner::Runner;
 use dispatcher::{Message, dispatch};
-use request::Request;
 use std::thread::JoinHandle;
+use reactor::Reactor;
 
-pub trait Service {
+pub trait Service : Send {
     fn query(&mut self, val: bool) -> Future<()>;
 }
 
-pub struct ServiceRunner<'a> {
-    service: &'a mut Service
+pub struct ServiceRunner<S: Service> {
+    service: S
 }
 
-impl<'a> ServiceRunner<'a> {
-    pub fn new(service: &'a mut Service) -> ServiceRunner<'a> {
+impl<S: Service> ServiceRunner<S> {
+    pub fn new(service: S) -> ServiceRunner<S> {
         ServiceRunner {
             service: service
         }
     }
 }
 
-impl<'a, D> Runner<D> for ServiceRunner<'a>
+impl<D, S: Service> Runner<D> for ServiceRunner<S>
     where D: Deserializer + ThriftDeserializer
 {
     fn run(&mut self, de: &mut D, msg: ThriftMessage) -> Result<Future<Vec<u8>>, Error> {
@@ -97,7 +97,6 @@ impl Serialize for QueryArgs {
 }
 
 pub struct RpcClient {
-    buf: Vec<u8>,
     dispatcher: Sender<Message>,
     handle: JoinHandle<()>
 }
@@ -107,13 +106,12 @@ impl RpcClient {
         let (handle, tx) = dispatch(addr);
 
         RpcClient {
-            buf: Vec::new(),
             dispatcher: tx,
             handle: handle
         }
     }
 
-    pub fn join(mut self) {
+    fn join(mut self) {
         self.handle.join();
     }
 
@@ -127,9 +125,10 @@ impl Service for RpcClient {
     fn query(&mut self, val: bool) -> Future<()> {
         let (tx, rx) = channel();
         let future = Future::<Vec<u8>>::from_channel(rx);
+        let mut buf = Vec::new();
 
         {
-            let mut proto = BinarySerializer::new(&mut self.buf);
+            let mut proto = BinarySerializer::new(&mut buf);
             let args = QueryArgs {
                 val: val
             };
@@ -139,38 +138,45 @@ impl Service for RpcClient {
             proto.write_message_end();
         }
 
-        let req = Request::new(self.buf.clone());
-        self.dispatcher.send(Message::Req(req, tx));
+        self.dispatcher.send(Message::Call("query".to_string(), buf, tx));
 
-        future.map(|v| ())
+        future.map(|v| {
+
+            ()
+        })
     }
 }
 
 #[test]
 fn call_query() {
-    let addr = "127.0.0.1:8000".parse().unwrap();
-    let mut rpc = RpcClient::new(addr);
-    rpc.query(true);
-    let buf = rpc.buf.clone();
+    struct S;
 
-    struct Server;
-
-    impl Service for Server {
+    impl Service for S {
         fn query(&mut self, val: bool) -> Future<()> {
             assert_eq!(val, true);
             Future::unit(())
         }
     }
 
-    {
-        let mut de = BinaryDeserializer::new(Cursor::new(buf));
-        let mut s = Server;
-        let mut caller = ServiceRunner::new(&mut s);
-        MessagePipeline::new(de).run(&mut caller).unwrap().and_then(|v| {
-            println!("#query result: {:?}", v);
-            Async::Ok(())
-        });
-    }
+    let run = ServiceRunner::new(S);
+    let mut server = Server::new(run);
+    server.bind("0.0.0.0:9455".parse().unwrap());
 
+    let addr = "0.0.0.0:9455".parse().unwrap();
+    let mut rpc = RpcClient::new(addr);
+
+    rpc.query(true);
+
+    // {
+    //     let mut de = BinaryDeserializer::new(Cursor::new(buf));
+    //     let mut s = Server;
+    //     let mut caller = ServiceRunner::new(&mut s);
+    //     MessagePipeline::new(de).run(&mut caller).unwrap().and_then(|v| {
+    //         println!("#query result: {:?}", v);
+    //         Async::Ok(())
+    //     });
+    // }
+
+    Reactor::run();
     rpc.shutdown();
 }

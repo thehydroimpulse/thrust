@@ -259,7 +259,7 @@ impl<R: Read + ReadBytesExt> ThriftDeserializer for BinaryDeserializer<R> {
 mod tests {
     use std::io::{Cursor, Read};
     use byteorder::{ReadBytesExt, BigEndian};
-    use protocol::{ThriftMessageType, ThriftType, ThriftSerializer, Serializer, Serialize, Deserializer};
+    use protocol::{ThriftMessageType, ThriftType, ThriftMessage, ThriftDeserializer, ThriftSerializer, Serializer, Serialize, Deserializer};
     use super::*;
 
     #[test]
@@ -391,5 +391,21 @@ mod tests {
 
         assert_eq!(version, cursor.read_i32::<BigEndian>().unwrap());
         // XXX Decode string and seqid.
+    }
+
+    #[test]
+    fn write_and_read_message_begin() {
+        let mut buf = Vec::new();
+
+        {
+            let mut se = BinarySerializer::new(&mut buf);
+            se.write_message_begin("Foobar123", ThriftMessageType::Call);
+        }
+
+        let mut de = BinaryDeserializer::new(Cursor::new(buf));
+        let msg = de.read_message_begin().unwrap();
+
+        assert_eq!(msg.name, "Foobar123");
+        assert_eq!(msg.ty, ThriftMessageType::Call);
     }
 }

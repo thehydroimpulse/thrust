@@ -5,28 +5,35 @@ use std::io::{self, Cursor, Write, Read};
 use std::net::{self, SocketAddr};
 use std::time::Duration;
 use std::mem;
-use std::thread;
+use std::iter;
+use std::thread::{self, JoinHandle};
+use event_loop::EVENT_LOOP;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use result::{ThrustResult, ThrustError};
 use tangle::{Future, Async};
 use bytes::buf::Buf;
 use std::collections::HashMap;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use libc;
+use std::os::unix::io::AsRawFd;
+
+pub struct Id(pub Token);
 
 /// Communication into the Mio event loop happens with a `Message`. For each new Mio
 /// event loop, a mio-specific `Sender<Message>` is returned.
+#[derive(Debug, Clone)]
 pub enum Message {
     /// `Connect` establishes a new `TcpStream` with a specified remote. The
     /// `Sender` channel part is used to communicate back with the initiator on
     /// certain socket events.
     ///
-    /// XXX: We should provide a way to accept a blocking `net::TcpStream` and convert
-    /// it into a non-blocking mio `TcpStream`.
-    Connect(SocketAddr, Sender<Dispatch>),
+    /// The first `Sender` is used to communicate back the assigned `Token`.
+    Connect(SocketAddr, Sender<Id>, Sender<Dispatch>),
     /// To give a tighter feedback loop, a `Bind` message will accept a normal
     /// Rust blocking net::TcpListener. This allows the user to more easily handle
     /// binding errors before sending it into the event loop where you need to
     /// handle any errors asynchronously.
-    Bind(net::TcpListener, SocketAddr, Sender<Dispatch>),
+    Bind(SocketAddr, Sender<Id>, Sender<Dispatch>),
     /// Initiate an `Rpc` request. Each request needs to know which `Token` the respective
     /// `Connection` is associated with. The `Reactor` also knows nothing about Thrift
     /// and simply works at the binary level.
@@ -40,14 +47,8 @@ pub enum Message {
 
 /// Communication from the `Reactor` to outside components happens with a `Dispatch` message
 /// and normal Rust channels instead of Mio's variant.
+#[derive(Debug)]
 pub enum Dispatch {
-    /// Each connection and listener is tagged with a Mio `Token` so we can differentiate between
-    /// them. As soon as we create the respective resource, we need a `Dispatch::Id` message
-    /// containing the newly allocated `Token`.
-    ///
-    /// This is used to send RPC calls or further differentiate each resource outside the
-    /// event loops.
-    Id(Token),
     /// When a socket has been read, the `Reactor` will send the `Dispatch::Data` message
     /// to the associating channel.
     ///
@@ -56,18 +57,85 @@ pub enum Dispatch {
 }
 
 pub enum Timeout {
-    Reconnect(Token, SocketAddr)
+    Reconnect(Token)
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum State {
+    /// The length that has been read so far.
+    ReadingFrame(usize),
     Reading,
     Writing,
     Closed
 }
 
+#[derive(Debug)]
+pub enum FrameState {
+    Reading(u32),
+    Writing
+}
+
+/// Wrap a `TcpStream` to handle reading and writing frames. Frames are simply some encoded thrift
+/// protocol byte buffer preceeded by a 32-bit unsigned length.
+pub struct FramedTransport {
+    buffer: Vec<u8>,
+    state: FrameState
+}
+
+impl FramedTransport {
+    pub fn new() -> FramedTransport {
+        FramedTransport {
+            buffer: Vec::new(),
+            state: FrameState::Reading(0)
+        }
+    }
+
+    pub fn read<S>(&mut self, socket: &mut S) -> ThrustResult<Option<Vec<u8>>>
+        where S: TryRead + TryWrite
+    {
+        match self.state {
+            FrameState::Reading(total_len) if self.buffer.len() == 0 => {
+                let mut buf = Vec::with_capacity(4);
+                buf.extend(iter::repeat(0).take(4));
+
+                // Try reading the first unsigned 32-bits for the length of the frame.
+                let len = match socket.try_read_buf(&mut buf)? {
+                    Some(n) if n == 4 => {
+                        let mut buf = Cursor::new(buf);
+                        buf.read_u32::<BigEndian>()?
+                    },
+                    Some(n) => {
+                        return Err(ThrustError::Other);
+                    },
+                    None => panic!("err")
+                };
+
+                // Set our internal buffer.
+                self.buffer = Vec::with_capacity(len as usize);
+                self.buffer.extend(iter::repeat(0).take(len as usize));
+                return self.read(socket);
+            },
+            FrameState::Reading(ref mut total_len) => {
+                while let Some(n) = socket.try_read_buf(&mut self.buffer)? {
+                    *total_len += n as u32;
+                    if *total_len == self.buffer.len() as u32 {
+                        return Ok(Some(mem::replace(&mut self.buffer, Vec::new())));
+                    } else if n == 0 {
+                        return Ok(None);
+                    }
+                }
+            },
+            FrameState::Writing => return Err(ThrustError::Other)
+        }
+
+        Ok(None)
+    }
+}
+
+
 pub struct Connection {
     stream: TcpStream,
+    addr: SocketAddr,
     pub token: Token,
     state: State,
     chan: Sender<Dispatch>,
@@ -76,15 +144,20 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(stream: TcpStream, token: Token, chan: Sender<Dispatch>) -> Self {
+    pub fn new(conn: (TcpStream, SocketAddr), token: Token, chan: Sender<Dispatch>) -> Self {
         Connection {
-            stream: stream,
+            stream: conn.0,
+            addr: conn.1,
             token: token,
             state: State::Reading,
             chan: chan,
             rbuffer: vec![],
             wbuffer: Cursor::new(vec![])
         }
+    }
+
+    pub fn reset(&mut self, event_loop: &mut EventLoop<Reactor>) {
+        event_loop.timeout(Timeout::Reconnect(self.token), Duration::from_millis(10));
     }
 
     pub fn ready(&mut self, event_loop: &mut EventLoop<Reactor>, events: EventSet) {
@@ -103,11 +176,31 @@ impl Connection {
         }
     }
 
-    pub fn read(&mut self) -> ThrustResult<Vec<u8>> {
-        match self.stream.try_read_buf(&mut self.rbuffer) {
-            Ok(Some(_)) => Ok(mem::replace(&mut self.rbuffer, vec![])),
-            Ok(None) => Err(ThrustError::NotReady),
-            Err(err) => Err(ThrustError::Other)
+    pub fn read(&mut self) -> ThrustResult<Option<Vec<u8>>> {
+        match self.state {
+            State::Reading => {
+                let len = self.stream.read_u32::<BigEndian>()?;
+                self.state = State::ReadingFrame(0);
+                self.rbuffer = Vec::with_capacity(len as usize);
+                self.read()
+            },
+            State::ReadingFrame(ref mut len) => {
+                match self.stream.try_read_buf(&mut self.rbuffer) {
+                    Ok(Some(n)) => {
+                        if *len + n == self.rbuffer.len() {
+                            let buf = mem::replace(&mut self.rbuffer, Vec::new());
+                            Ok(Some(buf))
+                        } else {
+                            *len += n;
+                            // We don't have a complete frame yet.
+                            Ok(None)
+                        }
+                    },
+                    Ok(None) => Err(ThrustError::NotReady),
+                    Err(err) => Err(ThrustError::Other)
+                }
+            },
+            _ => Err(ThrustError::Other)
         }
     }
 
@@ -124,8 +217,14 @@ impl Connection {
     }
 
     pub fn readable(&mut self) -> ThrustResult<()> {
-        while let Ok(buf) = self.read() {
-            self.chan.send(Dispatch::Data(self.token, buf));
+        while let Ok(op) = self.read() {
+            match op {
+                Some(buf) => {
+                    self.state = State::Reading;
+                    self.chan.send(Dispatch::Data(self.token, buf));
+                },
+                None => {}
+            }
         }
 
         self.state = State::Writing;
@@ -134,8 +233,7 @@ impl Connection {
     }
 
     fn register(&mut self, event_loop: &mut EventLoop<Reactor>, token: Token) -> ThrustResult<()> {
-        try!(event_loop.register(&self.stream, token, EventSet::readable(),
-                            PollOpt::edge() | PollOpt::oneshot()));
+        event_loop.register(&self.stream, token, EventSet::readable(), PollOpt::edge() | PollOpt::oneshot())?;
         Ok(())
     }
 
@@ -146,15 +244,16 @@ impl Connection {
             _ => EventSet::none()
         };
 
-        try!(event_loop.reregister(&self.stream, self.token, event_set, PollOpt::oneshot()));
+        event_loop.reregister(&self.stream, self.token, event_set, PollOpt::oneshot())?;
         Ok(())
     }
 }
 
 impl Write for Connection {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
-        try!(self.wbuffer.get_mut().write(data));
-        try!(self.flush());
+        self.wbuffer.get_mut().write_u32::<BigEndian>(data.len() as u32)?;
+        self.wbuffer.get_mut().write(data)?;
+        self.flush()?;
         Ok(0)
     }
 
@@ -193,10 +292,9 @@ impl Write for Connection {
 /// // The channel is used as a channel. Any socket being accepted
 /// // by this listener will also use this channel (the sender part).
 /// let (tx, rx) = channel();
-/// let listener = TcpListener::bind("127.0.0.1:4566").unwrap();
 /// let addr = "127.0.0.1:4566".parse().unwrap();
 ///
-/// reactor_sender.send(Message::Bind(listener, addr, tx));
+/// reactor_sender.send(Message::Bind(addr, tx));
 /// ```
 ///
 /// 2. Connecting to a remote TCP server and establishing a new non-blocking `TcpStream`.
@@ -232,7 +330,7 @@ pub struct Reactor {
 }
 
 impl Reactor {
-    pub fn new() -> Self {
+    pub fn new() -> Reactor {
         Reactor {
             listeners: HashMap::new(),
             connections: HashMap::new(),
@@ -241,18 +339,76 @@ impl Reactor {
         }
     }
 
+    pub fn run() -> JoinHandle<()> {
+        thread::spawn(move || {
+            let mut event_loop = EVENT_LOOP.lock().expect("Failed to take the `EVENT_LOOP` lock.");
+            let mut reactor = Reactor::new();
+            event_loop.run(&mut reactor);
+        })
+    }
+
+    pub fn incoming_timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Timeout) -> ThrustResult<()> {
+        match timeout {
+            Timeout::Reconnect(token) => {
+                let mut conn = self.connections.get_mut(&token).expect("Could not find the connection.");
+                let mut stream = TcpStream::connect(&conn.addr)?;
+                conn.stream = stream;
+                conn.register(event_loop, token);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn incoming_msg(&mut self, event_loop: &mut EventLoop<Self>, msg: Message) -> ThrustResult<()> {
+        match msg {
+            Message::Rpc(id, data) => {
+                self.connections.get_mut(&id).expect("connection was not found #2").write(&*data);
+            },
+            Message::Shutdown => {
+                event_loop.shutdown();
+            },
+            Message::Connect(addr, id_tx, tx) => {
+                let mut mio_stream = TcpStream::connect(&addr).expect("MIO ERR");
+                let new_token = Token(self.current_token);
+                id_tx.send(Id(new_token));
+                let mut conn = Connection::new((mio_stream, addr), new_token, tx);
+
+                self.connections.insert(new_token, conn);
+
+                self.connections.get_mut(&new_token)
+                    .expect("Cannot find the connection from the token {:?}")
+                    .register(event_loop, new_token);
+
+                self.current_token += 1;
+            },
+            Message::Bind(addr, id_tx, tx) => {
+                let token = Token(self.current_token);
+                let mut lis = TcpListener::bind(&addr)?;
+
+                id_tx.send(Id(token));
+                self.servers.insert(token, tx);
+
+                event_loop.register(&lis, token, EventSet::readable(), PollOpt::edge())?;
+                self.listeners.insert(token, lis);
+                self.current_token += 1;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn accept_connection(&mut self, event_loop: &mut EventLoop<Self>, token: Token) {
         let mut listener = self.listeners.get_mut(&token).expect("Listener was not found.");
         match listener.accept() {
             Ok(Some(socket)) => {
-                let (stream, _) = socket;
                 let clone = self.servers[&token].clone();
                 let new_token = Token(self.current_token);
-                let mut conn = Connection::new(stream, new_token, clone);
+                let mut conn = Connection::new(socket, new_token, clone);
 
                 self.connections.insert(new_token, conn);
                 self.connections.get_mut(&new_token)
-                    .unwrap()
+                    .expect("Cannot find the connection in the cache.")
                     .register(event_loop, new_token);
 
                 self.current_token += 1;
@@ -268,10 +424,12 @@ impl Handler for Reactor {
 
     fn ready(&mut self, event_loop: &mut EventLoop<Self>, token: Token, events: EventSet) {
         if events.is_hup() {
-            println!("Hup received. Socket disconnected.");
             if self.connections.contains_key(&token) {
-                self.connections.remove(&token);
+                let mut conn = self.connections.get_mut(&token)
+                    .expect("Cannot find the connection in the cache.")
+                    .reset(event_loop);
             }
+
             return;
         }
 
@@ -286,46 +444,22 @@ impl Handler for Reactor {
         }
 
         if self.connections.contains_key(&token) {
-            self.connections.get_mut(&token).expect("connection was not found.").ready(event_loop, events);
+            self.connections.get_mut(&token).expect("connection was not found #1").ready(event_loop, events);
         }
     }
 
     /// XXX: Timeouts would be useful to implement.
     fn timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Timeout) {
+        match self.incoming_timeout(event_loop, timeout) {
+            Ok(_) => {},
+            Err(err) => panic!("An error occurred while handling a timeout")
+        }
     }
 
     fn notify(&mut self, event_loop: &mut EventLoop<Self>, msg: Message) {
-        match msg {
-            Message::Rpc(id, data) => {
-                self.connections.get_mut(&id).expect("connection was not found.").write(&*data);
-            },
-            Message::Shutdown => {
-                event_loop.shutdown();
-            },
-            Message::Connect(addr, tx) => {
-                let mut mio_stream = TcpStream::connect(&addr).expect("MIO ERR");
-                let new_token = Token(self.current_token);
-                tx.send(Dispatch::Id(new_token));
-                let mut conn = Connection::new(mio_stream, new_token, tx);
-
-                self.connections.insert(new_token, conn);
-
-                self.connections.get_mut(&new_token)
-                    .unwrap()
-                    .register(event_loop, new_token);
-
-                self.current_token += 1;
-            },
-            Message::Bind(listener, addr, tx) => {
-                let token = Token(self.current_token);
-                let mut lis = TcpListener::from_listener(listener, &addr).unwrap();
-                tx.send(Dispatch::Id(token));
-                self.servers.insert(token, tx);
-
-                event_loop.register(&lis, token, EventSet::readable(), PollOpt::edge()).unwrap();
-                self.listeners.insert(token, lis);
-                self.current_token += 1;
-            }
+        match self.incoming_msg(event_loop, msg) {
+            Ok(_) => {},
+            Err(err) => panic!("Reactor failed to handle incoming msg")
         }
     }
 }
@@ -334,18 +468,70 @@ impl Handler for Reactor {
 mod tests {
     use mio::{EventLoop, Token};
     use super::*;
-    use std::io::Write;
+    use std::io::{Write, Cursor, Read};
     use std::sync::mpsc::{Receiver, Sender, channel};
     use tangle::{Future, Async};
     use std::thread;
     use std::time::Duration;
     use std::net::{TcpListener, TcpStream, SocketAddr};
+    use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+
+    // #[test]
+    // fn should_read_frame() {
+    //     let mut buf = vec![1, 2, 3];
+    //     let mut source = Vec::new();
+    //     source.write_u32::<BigEndian>(3);
+    //     source.write(&mut buf);
+
+    //     let mut source = Cursor::new(source);
+    //     let mut framed = FramedTransport::new();
+    //     let buf = match framed.read(&mut source) {
+    //         Ok(Some(buf)) => buf,
+    //         Ok(None) => panic!("Could not read the next frame from the socket."),
+    //         Err(err) => panic!("Tests failed.")
+    //     };
+
+    //     assert_eq!(&buf[..], &[1, 2, 3]);
+    // }
+
+    // #[test]
+    // fn should_error_on_incomplete_frame() {
+    //     let mut buf = vec![1, 2];
+    //     let mut source = Vec::new();
+    //     source.write_u32::<BigEndian>(3);
+    //     source.write(&mut buf);
+
+    //     let mut source = Cursor::new(source);
+    //     let mut framed = FramedTransport::new();
+    //     match framed.read(&mut source) {
+    //         Ok(Some(buf)) => panic!("We shouldn't have gotten a read frame back."),
+    //         Ok(None) => {},
+    //         Err(err) => panic!("Tests failed. {:?}", err)
+    //     }
+    // }
+
+    // #[test]
+    // fn should_eventually_read_delayed_frame() {
+    //     let mut buf = vec![];
+    //     let mut source = Vec::new();
+    //     source.write_u32::<BigEndian>(3);
+    //     source.write(&mut buf);
+
+    //     let mut reader = Cursor::new(source);
+    //     let mut framed = FramedTransport::new();
+    //     match framed.read(&mut reader) {
+    //         Ok(Some(buf)) => panic!("We shouldn't have gotten a read frame back."),
+    //         Ok(None) => {},
+    //         Err(err) => panic!("Tests failed. {:?}", err)
+    //     }
+    // }
+
 
     #[test]
     fn create_reactor() {
         let (assert_tx, assert_rx) = channel();
         let mut reactor = Reactor::new();
-        let mut event_loop = EventLoop::new().unwrap();
+        let mut event_loop = EventLoop::new().expect("[test]: EventLoop failed to create.");
         let sender = event_loop.channel();
 
         let handle = thread::spawn(move || {
@@ -353,22 +539,19 @@ mod tests {
         });
 
         // Establish a local TcpListener.
-        let addr: SocketAddr = "127.0.0.1:5543".parse().unwrap();
-        let listener = TcpListener::bind(addr.clone()).unwrap();
+        let addr: SocketAddr = "127.0.0.1:6543".parse().expect("[test]: Parsing into SocketAddr failed.");
         let (rpc_server_tx, rpc_server_rx) = channel();
 
         // Create a new non-blocking tcp server.
-        sender.send(Message::Bind(listener, addr.clone(), rpc_server_tx.clone()));
+        let (id_tx, id_rx) = channel();
+        sender.send(Message::Bind(addr.clone(), id_tx, rpc_server_tx.clone()));
 
         let (rpc_client_tx, rpc_client_rx) = channel();
+        let (rpc_client_id_tx, rpc_client_id_rx) = channel();
 
-        sender.send(Message::Connect(addr, rpc_client_tx));
+        sender.send(Message::Connect(addr, rpc_client_id_tx, rpc_client_tx));
 
-        let client_id = match rpc_client_rx.recv().unwrap() {
-            Dispatch::Id(n) => n,
-            _ => panic!("Expected to receive the Connection id/token.")
-        };
-
+        let Id(client_id) = rpc_client_id_rx.recv().expect("[test]: Receiving from channel `rpc_client_id_rx` failed.");
         sender.send(Message::Rpc(client_id, b"abc".to_vec()));
 
         let server = thread::spawn(move || {
@@ -376,8 +559,7 @@ mod tests {
                 match msg {
                     Dispatch::Data(id, msg) => {
                         assert_tx.send((id, msg)).expect("Could not assert_tx");
-                    },
-                    _ => {}
+                    }
                 }
             }
         });
@@ -390,13 +572,11 @@ mod tests {
         // Send a "response" back.
         sender.send(Message::Rpc(new_id, b"bbb".to_vec()));
 
-
-        match rpc_client_rx.recv().unwrap() {
+        match rpc_client_rx.recv().expect("[test]: Receiving from channel `rpc_client_rx` failed.") {
             Dispatch::Data(id, v) => {
                 assert_eq!(id, client_id);
                 assert_eq!(v, b"bbb");
-            },
-            _ => panic!("Unexpected case.")
+            }
         }
     }
 }

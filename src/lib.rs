@@ -1,5 +1,5 @@
 #![allow(unused_imports, unused_variables, dead_code, unused_must_use, unused_mut)]
-#![feature(associated_type_defaults)]
+#![feature(associated_type_defaults, mpsc_select, question_mark)]
 
 #[macro_use]
 extern crate nom;
@@ -12,32 +12,31 @@ extern crate rand;
 extern crate slab;
 extern crate bytes;
 extern crate num_cpus;
+extern crate libc;
 
 use nom::{IResult};
 use std::str;
 use std::convert;
 use std::string;
 
-mod server;
+// mod server;
 mod parser;
 mod ast;
+mod util;
 mod generator;
 mod event_loop;
 mod reactor;
 pub mod protocol;
 pub mod binary_protocol;
-mod service;
+// mod service;
 mod pipeline;
 mod runner;
 mod dispatcher;
-mod request;
 mod result;
 mod transport;
-mod spawner;
 
 pub use generator::Generator;
 pub use result::{ThrustResult, ThrustError};
-pub use spawner::Spawner;
 pub use protocol::{Serializer, Serialize, Deserialize, ThriftSerializer, ThriftDeserializer};
 
 /// XXX: Replace with the new `ThrustResult` type.
