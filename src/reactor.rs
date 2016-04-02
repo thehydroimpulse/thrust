@@ -366,10 +366,11 @@ impl Reactor {
                 self.connections.get_mut(&id).expect("connection was not found #2").write(&*data);
             },
             Message::Shutdown => {
+                println!("Shutting down...");
                 event_loop.shutdown();
             },
             Message::Connect(addr, id_tx, tx) => {
-                let mut mio_stream = TcpStream::connect(&addr).expect("MIO ERR");
+                let mut mio_stream = TcpStream::connect(&addr)?;
                 let new_token = Token(self.current_token);
                 id_tx.send(Id(new_token));
                 let mut conn = Connection::new((mio_stream, addr), new_token, tx);

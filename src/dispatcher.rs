@@ -152,7 +152,10 @@ mod tests {
     use event_loop::SENDER;
     use protocol::{ThriftMessage, ThriftMessageType};
     use binary_protocol::BinaryDeserializer;
+    use std::sync::mpsc::channel;
     use util;
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn should_create_server_dispatcher() {
@@ -164,6 +167,7 @@ mod tests {
     fn should_start_server() {
         let addr: SocketAddr = "127.0.0.1:5955".parse().unwrap();
         let (handle_server, server) = Dispatcher::spawn(Role::Server(addr.clone())).unwrap();
+        thread::sleep(Duration::from_millis(30));
         let (handle_client, client) = Dispatcher::spawn(Role::Client(addr.clone())).unwrap();
 
         let buf = util::create_empty_thrift_message("foobar123", ThriftMessageType::Call);
@@ -171,12 +175,24 @@ mod tests {
         let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
         client.send(Incoming::Call("foobar123".to_string(), buf, res)).unwrap();
 
+        let (res_tx, res_rx) = channel();
+        let cloned = res_tx.clone();
         future.and_then(move |(msg, de)| {
             println!("[test]: Received: {:?}", msg);
             SENDER.clone().send(Message::Shutdown);
+            res_tx.send(0);
             Async::Ok(())
         });
 
+        thread::spawn(move || -> Result<(), ()> {
+            thread::sleep(Duration::from_millis(3000));
+            SENDER.clone().send(Message::Shutdown);
+            panic!("Test timeout was hit. This means the Reactor did not shutdown and a response was not received.");
+            cloned.send(1);
+        });
+
         Reactor::run().join();
+
+        assert_eq!(res_rx.recv().unwrap(), 0);
     }
 }
