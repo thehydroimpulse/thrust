@@ -99,6 +99,81 @@ fn main() {
 }
 ```
 
+## Connecting to a Service
+
+A client is automatically generated for each service you define in your `.thrift` file. Let's keep using our previously defined service as an example.
+
+```rust
+extern crate thrust;
+// Tangle is a futures implementation
+extern crate tangle;
+
+// The generated Rust module.
+use thrift::{Flock, Client};
+
+use thrust::Reactor;
+use tangle::{Future, Async};
+
+fn main() {
+  let addr: SocketAddr = "127.0.0.1:7899".parse().unwrap();
+
+  // Connect to the service
+  let flock = Client::connect(addr);
+
+  // Initiate an RPC call
+  flock.isLoggedIn("123").and_then(move |is| {
+    if is == true {
+      println!("You're logged in!")
+    } else {
+      println!("Nada");
+    }
+
+    Async::Ok(())
+  });
+
+  // Just as before, running the Reactor is required.
+  Reactor::run();
+}
+```
+
+Remember, Thrust is built using asynchronous primitives and futures are currently the common language for asynchronous tasks. Futures prevent much of the problems in traditional callback-based systems.
+
+```rust
+enum Error {
+  AccessDenied
+}
+
+flock.isLoggedIn("123").and_then(move |is_logged_in| {
+  if is_logged_in == true {
+    Async::Ok(())
+  } else {
+    Async::Err(Error::AccessDenied)
+  }
+}).and_then(move || {
+  // This will only run if the user has been logged in. Errors
+  // can be caught later on.
+
+  // ... Do some other fun stuff here.
+  Async::Ok(())
+}).error(move |err| {
+  Async::Err(err)
+})
+```
+
+## Sharing Clients
+
+You might want to share clients across threads and that's perfectly supported! Clients are fully clone-able and are thread-safe.
+
+```rust
+let shared = client.clone();
+
+thread::spawn(move || {
+  shared...
+})
+```
+
+This will re-use the same connection underneath. All TCP connections run in a single Mio event loop (baring multiple event loops). If you wish to use multiple connections, you may create a new client.
+
 ## License
 
 MIT &mdash; go ham!
