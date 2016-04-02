@@ -184,6 +184,8 @@ mod tests {
             Async::Ok(())
         });
 
+        // Ensure that the test exists after at least 3 seconds if the response was not
+        // received.
         thread::spawn(move || -> Result<(), ()> {
             thread::sleep(Duration::from_millis(3000));
             SENDER.clone().send(Message::Shutdown);

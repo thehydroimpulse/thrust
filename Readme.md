@@ -11,7 +11,7 @@ A Rust implementation of the [Apache Thrift](https://thrift.apache.org/) protoco
 - Built on-top of Asynchronous I/O via Mio.
 - Heavily uses Futures to manage asynchronous code.
 - Multiplexing multiple RPC services on a single event-loop.
-- Automatically spawn an `EventLoop` per CPU core.
+- (Currently limited to one for now) Automatically spawn an `EventLoop` per CPU core.
 
 ## Installing
 
@@ -37,19 +37,16 @@ thrust hello.thrift .
 The first argument is the input thrift file and the second is the *path* where you want your
 Rust file to be written to. The filename will be based on the Rust namespace in your thrift file `namespace rust <name>`.
 
-## Spawning Event Loops
+## Spawning The Reactor
+
+All the I/O and networking is built using Mio. By default, a single Reactor is spun up globally. Support for multiple event loops/Reactors are supported but not working correctly right now.
 
 ```rust
-use thrust::Spawner;
+use thrust::Reactor;
 
 fn main() {
-  // By default, this will run as many event loop threads as you have CPU cores.
-  let spawner = Spawner::new(None);
-
-  // ...
-
-  // Block the main thread until all event loops terminate.
-  spawner.join();
+  // Run the reactor that multiplexes many clients and servers.
+  Reactor::run();
 }
 ```
 
@@ -75,7 +72,7 @@ extern crate tangle;
 // The generated Rust module.
 use thrift::Flock;
 
-use thrust::{Spawner, Server};
+use thrust::{Reactor, Server};
 use tangle::{Future, Async};
 
 pub struct FlockService;
@@ -91,16 +88,17 @@ impl Flock for FlockService {
 }
 
 fn main() {
-  // Create a Spawner to manage Mio event loops.
-  let mut spawner = Spawner::new(None);
+  let addr: SocketAddr = "127.0.0.1:7899".parse().unwrap();
 
-  Server::run(&spawner, FlockService);
+  // Asynchronously bind the server to the specified port. This does
+  // not block the current thread.
+  Server::new(FlockService).bind(addr);
 
-  spawner.join();
+  // Run the Reactor with the server.
+  Reactor::run();
 }
 ```
 
 ## License
 
 MIT &mdash; go ham!
-
