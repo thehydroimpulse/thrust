@@ -29,6 +29,20 @@ pub struct Include {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Service {
+    ident: String,
+    methods: Vec<ServiceMethod>
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ServiceMethod {
+    ident: String,
+    ty: String,
+    attr: FieldAttribute,
+    args: Vec<StructField>
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Enum {
     ident: String,
     variants: Vec<String>
@@ -106,7 +120,8 @@ impl Ast for Struct {
             match node.attr {
                 FieldAttribute::Required => {},
                 // XXX: We need to map the inner `node.ty` to a proper Rust type.
-                FieldAttribute::Optional => ty = map_ty(&format!("Option<{}>", node.ty))
+                FieldAttribute::Optional => ty = map_ty(&format!("Option<{}>", node.ty)),
+                _ => panic!("Oneway is not supported for struct fields.")
             }
 
             let field = ast::StructField {
@@ -157,7 +172,8 @@ impl Ast for Struct {
 #[derive(Debug, PartialEq, Eq)]
 pub enum FieldAttribute {
     Optional,
-    Required
+    Required,
+    Oneway
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -215,6 +231,8 @@ pub enum Token {
     RCurly,
     LAngle,
     RAngle,
+    LParen,
+    RParen,
     Number(i16),
     QuotedString(String),
     Ident(String),
@@ -399,6 +417,79 @@ impl<'a> Parser<'a> {
         })
     }
 
+    pub fn parse_service(&mut self) -> Result<Service, Error> {
+        self.expect_keyword(Keyword::Service)?;
+
+        let mut methods = Vec::new();
+        let ident = self.expect_ident()?;
+        self.expect(&Token::LCurly)?;
+
+        loop {
+            if self.eat(&Token::RCurly) {
+                break;
+            }
+
+            // Try and eat a keyword
+            let method_attr = if self.eat_keyword(Keyword::Oneway) {
+                FieldAttribute::Oneway
+            } else {
+                // This is mostly ignored, we just need some sort of value here.
+                FieldAttribute::Required
+            };
+
+            let method_ty = self.parse_ident()?;
+            let method_ident = self.parse_ident()?;
+            let mut method_fields = Vec::new();
+
+            self.expect(&Token::LParen)?;
+
+            loop {
+                if self.eat(&Token::RParen) {
+                    break;
+                }
+
+                let seq = self.parse_number()?;
+                self.expect(&Token::Colon)?;
+                let field_ty = self.parse_ident()?;
+                let field_ident = self.parse_ident()?;
+
+                method_fields.push(StructField {
+                    seq: seq,
+                    attr: FieldAttribute::Required,
+                    ty: field_ty,
+                    ident: field_ident
+                });
+
+                if self.eat(&Token::Comma) {
+                    continue;
+                } else if self.eat(&Token::RParen) {
+                    break;
+                } else {
+                    panic!("failed to properly parse the service {:?}", ident);
+                }
+            }
+
+            methods.push(ServiceMethod {
+                ident: method_ident,
+                ty: method_ty,
+                attr: method_attr,
+                args: method_fields
+            });
+
+            if self.eat(&Token::Comma) || self.eat(&Token::Semi) {
+                continue;
+            } else {
+                self.eat(&Token::RCurly);
+                break;
+            }
+        }
+
+        Ok(Service {
+            ident: ident,
+            methods: methods
+        })
+    }
+
     pub fn expect_string(&mut self) -> Result<String, Error> {
         let val = match self.token {
             Token::QuotedString(ref s) => s.clone(),
@@ -515,6 +606,8 @@ impl<'a> Parser<'a> {
                 Token::QuotedString(val)
             },
             '=' => Token::Eq,
+            '(' => Token::LParen,
+            ')' => Token::RParen,
             '{' => Token::LCurly,
             '}' => Token::RCurly,
             '<' => Token::LAngle,
@@ -712,6 +805,13 @@ mod tests {
     }
 
     #[test]
+    fn parens_token() {
+        let mut parser = Parser::new("()");
+        assert_eq!(parser.next_token(), Token::LParen);
+        assert_eq!(parser.next_token(), Token::RParen);
+    }
+
+    #[test]
     fn hash_comment_token() {
         let mut parser = Parser::new("<#foobar\n:");
         assert_eq!(parser.next_token(), Token::LAngle);
@@ -774,7 +874,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_namespaace() {
+    fn parse_namesp_ace() {
         let mut p = Parser::new("namespace rust foobar");
         let ns = p.parse_namespace().unwrap();
         assert_eq!(&*ns.lang, "rust");
@@ -811,6 +911,42 @@ mod tests {
         assert_eq!(&*def.ident, "Hello");
         assert_eq!(def.variants.len(), 1);
         assert_eq!(&*def.variants[0], "ONE");
+    }
+
+    #[test]
+    fn parse_empty_service() {
+        let mut p = Parser::new("service Flock {}");
+        let def = p.parse_service().unwrap();
+        assert_eq!(&*def.ident, "Flock");
+        assert_eq!(def.methods.len(), 0);
+    }
+
+    #[test]
+    fn parse_method_service() {
+        let mut p = Parser::new("service Flock {
+                                    void ping();
+                                }");
+        let def = p.parse_service().unwrap();
+        assert_eq!(&*def.ident, "Flock");
+        assert_eq!(def.methods.len(), 1);
+        assert_eq!(&*def.methods[0].ident, "ping");
+        assert_eq!(&*def.methods[0].ty, "void");
+        assert_eq!(def.methods[0].attr, FieldAttribute::Required);
+        assert_eq!(def.methods[0].args.len(), 0);
+    }
+
+    #[test]
+    fn parse_oneway_method_service() {
+        let mut p = Parser::new("service Flock {
+                                    oneway void ping();
+                                }");
+        let def = p.parse_service().unwrap();
+        assert_eq!(&*def.ident, "Flock");
+        assert_eq!(def.methods.len(), 1);
+        assert_eq!(&*def.methods[0].ident, "ping");
+        assert_eq!(&*def.methods[0].ty, "void");
+        assert_eq!(def.methods[0].attr, FieldAttribute::Oneway);
+        assert_eq!(def.methods[0].args.len(), 0);
     }
 
     #[test]
