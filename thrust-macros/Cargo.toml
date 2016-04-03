@@ -1,0 +1,16 @@
+[package]
+name = "thrust_macros"
+version = "0.1.0"
+authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+nom = "*"
+
+[dependencies.thrust]
+path = "../"
+
+[dependencies.thrust_parser]
+path = "../thrust-parser"

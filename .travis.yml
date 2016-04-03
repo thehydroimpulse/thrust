@@ -6,6 +6,9 @@ matrix:
 script:
 - cargo build --verbose
 - cargo test --verbose
+- cd thrust-parser && cargo test --verbose && cd ..
+- cd thrust-macros && cargo test --verbose && cd ..
+- cd thrust-macros-test && cargo test --verbose && cd ..
 - if [ "$TEST_SUITE" = "suite_nightly" ]; then cargo bench --verbose; fi
 after_success: |
   [ $TRAVIS_BRANCH = master ] &&
