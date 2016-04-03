@@ -10,6 +10,15 @@ extern crate syntax;
 
 use std::char;
 
+/// Each argument and return value in Thrift is actually just a struct, which means we need to
+/// generate a new one for each of those items.
+pub trait IrArgStruct {
+    fn ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>>;
+}
+
+/// The Ast is responsible for generic the core items in the tree. These are mostly one-to-one
+/// relationships with Rust items. Additional supporting elements are done through later `Ir`
+/// traits.
 pub trait Ast {
     type E;
     fn ir(&self, cx: &mut ExtCtxt) -> Self::E;
@@ -67,6 +76,51 @@ impl Ast for Enum {
 pub struct Struct {
     ident: String,
     fields: Vec<StructField>
+}
+
+impl Ast for Struct {
+    type E = P<ast::Item>;
+    fn ir(&self, cx: &mut ExtCtxt) -> Self::E {
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        let mut fields = Vec::new();
+
+        for node in self.fields.iter() {
+            let span = cx.call_site();
+            let mut ty = map_ty(&node.ty);
+
+            match node.attr {
+                FieldAttribute::Required => {},
+                // XXX: We need to map the inner `node.ty` to a proper Rust type.
+                FieldAttribute::Optional => ty = map_ty(&format!("Option<{}>", node.ty))
+            }
+
+            let field = ast::StructField {
+                node: ast::StructField_ {
+                    kind: ast::StructFieldKind::NamedField(token::str_to_ident(&node.ident), ast::Visibility::Public),
+                    id: ast::DUMMY_NODE_ID,
+                    ty: cx.ty_ident(span, ty),
+                    attrs: Vec::new()
+                },
+                span: span
+            };
+            fields.push(field);
+        }
+
+        let span = cx.call_site();
+        let struct_def = ast::VariantData::Struct(fields, ast::DUMMY_NODE_ID);
+        let kind = ast::ItemKind::Struct(struct_def, ast::Generics::default());
+
+        let item = P(ast::Item {
+            ident: ident,
+            attrs: Vec::new(),
+            id: ast::DUMMY_NODE_ID,
+            node: kind,
+            vis: ast::Visibility::Public,
+            span: span
+        });
+
+        quote_item!(cx, $item).unwrap()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -136,9 +190,33 @@ pub enum Token {
     B,
 }
 
+
+fn map_ty(ty: &str) -> ast::Ident {
+    let ty = match ty {
+        "string" => "String",
+        "byte" => "i8",
+        "bool" => "bool",
+        "i16" => "i16",
+        "i32" => "i32",
+        "i64" => "i64",
+        "double" => "f64",
+        "binary" => "Vec<i8>",
+        s => s
+    };
+
+    token::str_to_ident(ty)
+}
+
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    Expected
+    Expected,
+    MissingFieldAttribute,
+    ExpectedNumber,
+    ExpectedString,
+    ExpectedKeyword(Keyword),
+    ExpectedIdent,
+    ExpectedToken(Token)
 }
 
 pub struct Parser<'a> {
@@ -196,7 +274,7 @@ impl<'a> Parser<'a> {
         } else if self.eat_keyword(Keyword::Required) {
             FieldAttribute::Required
         } else {
-            return Err(Error::Expected);
+            return Err(Error::MissingFieldAttribute);
         };
 
         let ty = self.parse_ident()?;
@@ -215,7 +293,7 @@ impl<'a> Parser<'a> {
 
         let n = match self.token {
             Token::Number(n) => n,
-            _ => return Err(Error::Expected)
+            _ => return Err(Error::ExpectedNumber)
         };
 
         self.bump();
@@ -246,6 +324,7 @@ impl<'a> Parser<'a> {
             if self.eat(&Token::Comma) {
                 continue;
             } else {
+                self.eat(&Token::RCurly);
                 break;
             }
         }
@@ -285,7 +364,7 @@ impl<'a> Parser<'a> {
     pub fn expect_string(&mut self) -> Result<String, Error> {
         let val = match self.token {
             Token::QuotedString(ref s) => s.clone(),
-            _ => return Err(Error::Expected)
+            _ => return Err(Error::ExpectedString)
         };
 
         self.bump();
@@ -294,7 +373,7 @@ impl<'a> Parser<'a> {
 
     pub fn expect_keyword(&mut self, keyword: Keyword) -> Result<(), Error> {
         if !self.eat_keyword(keyword) {
-            return Err(Error::Expected);
+            return Err(Error::ExpectedKeyword(keyword));
         }
 
         Ok(())
@@ -302,7 +381,7 @@ impl<'a> Parser<'a> {
 
     pub fn expect(&mut self, token: &Token) -> Result<Token, Error> {
         if !self.eat(token) {
-            return Err(Error::Expected);
+            return Err(Error::ExpectedToken(token.clone()));
         } else {
             Ok(self.token.clone())
         }
@@ -315,7 +394,7 @@ impl<'a> Parser<'a> {
 
         let i = match self.token {
             Token::Ident(ref s) => s.clone(),
-            _ => return Err(Error::Expected)
+            _ => return Err(Error::ExpectedIdent)
         };
 
         self.bump();

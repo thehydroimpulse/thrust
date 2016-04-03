@@ -8,6 +8,11 @@ thrust!("
         HELLO,
         Foobar
     }
+
+    struct Message {
+        1: required binary foobar;
+        2: optional string big;
+    }
 ");
 
 #[test]

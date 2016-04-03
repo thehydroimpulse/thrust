@@ -30,9 +30,3 @@ git = "https://github.com/carllerche/bytes"
 
 [dependencies.thrust_parser]
 path = "./thrust-parser"
-
-[dependencies.thrust_macros]
-path = "./thrust-macros"
-
-[dependencies.thrust_macros_test]
-path = "./thrust-macros-test"

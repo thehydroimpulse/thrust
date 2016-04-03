@@ -85,6 +85,7 @@ impl<'a, 'x> Compiler<'a, 'x> {
         let mut pieces = Vec::new();
 
         pieces.push(parser.parse_enum()?.ir(self.cx));
+        pieces.push(parser.parse_struct()?.ir(self.cx));
 
         Ok(quote_item!(self.cx, pub mod $module {
             $pieces
