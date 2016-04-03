@@ -1,5 +1,5 @@
 [package]
-name = "thrust-macros-test"
+name = "thrust_macros_test"
 version = "0.1.0"
 authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
