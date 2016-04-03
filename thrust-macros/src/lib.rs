@@ -2,15 +2,12 @@
 #![feature(plugin_registrar, quote, rustc_private, question_mark, concat_idents)]
 
 extern crate thrust_parser;
-extern crate thrust;
 extern crate syntax;
 extern crate rustc;
 extern crate rustc_plugin;
-extern crate nom;
 
 use thrust_parser::{Ast, Parser};
 use syntax::util::small_vector::SmallVector;
-use nom::IResult;
 use std::mem;
 use std::iter::Iterator;
 use syntax::codemap::Span;
@@ -80,15 +77,25 @@ impl<'a, 'x> Compiler<'a, 'x> {
 
     pub fn code(&mut self, input: String) -> Result<P<ast::Item>, thrust_parser::Error> {
         let mut parser = Parser::new(&input);
+        let mut items = Vec::new();
+
+        // We expect a namespace to appear first.
         let ns = parser.parse_namespace()?;
         let module = token::str_to_ident(&ns.module);
-        let mut pieces = Vec::new();
 
-        pieces.push(parser.parse_enum()?.ir(self.cx));
-        pieces.push(parser.parse_struct()?.ir(self.cx));
+        while let Ok(node) = parser.parse_item() {
+            match node.ir(self.cx) {
+                Some(item) => items.push(item),
+                // The node didn't want to export an item. All good!
+                None => {}
+            }
+        }
+
+        // pieces.push(parser.parse_enum()?.ir(self.cx));
+        // pieces.push(parser.parse_struct()?.ir(self.cx));
 
         Ok(quote_item!(self.cx, pub mod $module {
-            $pieces
+            $items
         }).unwrap())
     }
 

@@ -2,7 +2,7 @@
 
 use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, MacEager};
 use syntax::ext::build::AstBuilder;
-use syntax::parse::token::{self};
+use syntax::parse::token::{self, InternedString};
 use syntax::ast;
 use syntax::ptr::P;
 
@@ -20,8 +20,7 @@ pub trait IrArgStruct {
 /// relationships with Rust items. Additional supporting elements are done through later `Ir`
 /// traits.
 pub trait Ast {
-    type E;
-    fn ir(&self, cx: &mut ExtCtxt) -> Self::E;
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -36,8 +35,7 @@ pub struct Enum {
 }
 
 impl Ast for Enum {
-    type E = P<ast::Item>;
-    fn ir(&self, cx: &mut ExtCtxt) -> Self::E {
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
         let mut ident = token::str_to_ident(&self.ident.clone());
         let mut enum_def = ast::EnumDef {
             variants: Vec::new()
@@ -46,6 +44,7 @@ impl Ast for Enum {
         for node in self.variants.iter() {
             let name = token::str_to_ident(&node);
             let span = cx.call_site();
+
             enum_def.variants.push(ast::Variant {
                 node: ast::Variant_ {
                     name: name,
@@ -58,17 +57,34 @@ impl Ast for Enum {
         }
 
         let span = cx.call_site();
+        let derives = vec![
+            cx.meta_word(span, InternedString::new("Debug")),
+            cx.meta_word(span, InternedString::new("PartialEq")),
+            cx.meta_word(span, InternedString::new("Eq")),
+            cx.meta_word(span, InternedString::new("Clone")),
+            cx.meta_word(span, InternedString::new("Hash")),
+        ];
+        let attr = ast::Attribute {
+            node: ast::Attribute_ {
+                id: ast::AttrId(0),
+                style: ast::AttrStyle::Inner,
+                value: cx.meta_list(span, InternedString::new("derive"), derives),
+                is_sugared_doc: false
+            },
+            span: span
+        };
+
         let kind = ast::ItemKind::Enum(enum_def, ast::Generics::default());
         let item = P(ast::Item {
             ident: ident,
-            attrs: Vec::new(),
+            attrs: vec![attr],
             id: ast::DUMMY_NODE_ID,
             node: kind,
             vis: ast::Visibility::Public,
             span: span
         });
 
-        quote_item!(cx, $item).unwrap()
+        quote_item!(cx, $item)
     }
 }
 
@@ -79,8 +95,7 @@ pub struct Struct {
 }
 
 impl Ast for Struct {
-    type E = P<ast::Item>;
-    fn ir(&self, cx: &mut ExtCtxt) -> Self::E {
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
         let mut ident = token::str_to_ident(&self.ident.clone());
         let mut fields = Vec::new();
 
@@ -107,19 +122,35 @@ impl Ast for Struct {
         }
 
         let span = cx.call_site();
+        let derives = vec![
+            cx.meta_word(span, InternedString::new("Debug")),
+            cx.meta_word(span, InternedString::new("PartialEq")),
+            cx.meta_word(span, InternedString::new("Eq")),
+            cx.meta_word(span, InternedString::new("Clone")),
+            cx.meta_word(span, InternedString::new("Hash")),
+        ];
+        let attr = ast::Attribute {
+            node: ast::Attribute_ {
+                id: ast::AttrId(0),
+                style: ast::AttrStyle::Inner,
+                value: cx.meta_list(span, InternedString::new("derive"), derives),
+                is_sugared_doc: false
+            },
+            span: span
+        };
         let struct_def = ast::VariantData::Struct(fields, ast::DUMMY_NODE_ID);
         let kind = ast::ItemKind::Struct(struct_def, ast::Generics::default());
 
         let item = P(ast::Item {
             ident: ident,
-            attrs: Vec::new(),
+            attrs: vec![attr],
             id: ast::DUMMY_NODE_ID,
             node: kind,
             vis: ast::Visibility::Public,
             span: span
         });
 
-        quote_item!(cx, $item).unwrap()
+        quote_item!(cx, $item)
     }
 }
 
@@ -147,6 +178,12 @@ pub struct Typedef(pub String, pub String);
 pub struct Namespace {
     pub lang: String,
     pub module: String
+}
+
+impl Ast for Namespace {
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
+        None
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
@@ -216,7 +253,8 @@ pub enum Error {
     ExpectedString,
     ExpectedKeyword(Keyword),
     ExpectedIdent,
-    ExpectedToken(Token)
+    ExpectedToken(Token),
+    NoMoreItems
 }
 
 pub struct Parser<'a> {
@@ -409,6 +447,30 @@ impl<'a> Parser<'a> {
 
         self.bump();
         Ok(ident)
+    }
+
+    pub fn parse_item(&mut self) -> Result<Box<Ast>, Error> {
+        if self.lookahead_keyword(Keyword::Namespace) {
+            Ok(Box::new(self.parse_namespace()?))
+        } else if self.lookahead_keyword(Keyword::Enum) {
+            Ok(Box::new(self.parse_enum()?))
+        } else if self.lookahead_keyword(Keyword::Struct) {
+            Ok(Box::new(self.parse_struct()?))
+        } else {
+            Err(Error::NoMoreItems)
+        }
+    }
+
+    pub fn lookahead_keyword(&mut self, keyword: Keyword) -> bool {
+        self.lookahead(&Token::Keyword(keyword))
+    }
+
+    pub fn lookahead(&mut self, token: &Token) -> bool {
+        if self.token == *token {
+            true
+        } else {
+            false
+        }
     }
 
     pub fn eat_keyword(&mut self, keyword: Keyword) -> bool {

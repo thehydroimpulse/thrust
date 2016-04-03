@@ -5,12 +5,9 @@ authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [lib]
 crate-type = ["dylib"]
-
-[dependencies]
-nom = "*"
-
-[dependencies.thrust]
-path = "../"
+name = "thrust_macros"
+path = "src/lib.rs"
+plugin = true
 
 [dependencies.thrust_parser]
 path = "../thrust-parser"
