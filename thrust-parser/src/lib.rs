@@ -936,6 +936,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_method_with_one_args_service() {
+        let mut p = Parser::new("service Beans {
+                                    void poutine(1: string firstName);
+                                }");
+        let def = p.parse_service().unwrap();
+        assert_eq!(&*def.ident, "Beans");
+        assert_eq!(def.methods.len(), 1);
+        assert_eq!(&*def.methods[0].ident, "poutine");
+        assert_eq!(&*def.methods[0].ty, "void");
+        assert_eq!(def.methods[0].attr, FieldAttribute::Required);
+        assert_eq!(def.methods[0].args.len(), 1);
+        assert_eq!(def.methods[0].args[0], StructField {
+            seq: 1,
+            attr: FieldAttribute::Required,
+            ty: "string".to_string(),
+            ident: "firstName".to_string()
+        });
+    }
+
+    #[test]
     fn parse_oneway_method_service() {
         let mut p = Parser::new("service Flock {
                                     oneway void ping();
