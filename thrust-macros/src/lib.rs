@@ -79,6 +79,12 @@ impl<'a, 'x> Compiler<'a, 'x> {
                 // The node didn't want to export an item. All good!
                 None => {}
             }
+
+            let v = node.second_ir(self.cx);
+
+            for item in v.into_iter() {
+                items.push(item);
+            }
         }
 
         // pieces.push(parser.parse_enum()?.ir(self.cx));
@@ -86,6 +92,9 @@ impl<'a, 'x> Compiler<'a, 'x> {
 
         Ok(quote_item!(self.cx, pub mod $module {
             #![allow(dead_code, unused_imports)]
+            use thrust::protocol::Error;
+            use tangle::{Future, Async};
+            use std::collections::{HashMap, HashSet};
             use thrust::protocol::{ThriftDeserializer, ThriftSerializer};
             use thrust::protocol::{Serializer, Deserializer};
             use thrust::protocol::{Deserialize, Serialize};

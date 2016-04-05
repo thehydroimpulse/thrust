@@ -2,6 +2,7 @@
 #![plugin(thrust_macros)]
 
 extern crate thrust;
+extern crate tangle;
 
 thrust!("
     namespace rust foobar1

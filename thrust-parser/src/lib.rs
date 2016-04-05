@@ -5,10 +5,22 @@ use syntax::ext::build::AstBuilder;
 use syntax::parse::token::{self, InternedString};
 use syntax::ast;
 use syntax::ptr::P;
+use std::char;
 
 extern crate syntax;
 
-use std::char;
+/// Each argument and return value in Thrift is actually just a struct, which means we need to
+/// generate a new one for each of those items.
+pub trait SecondPhaseIR: Ast {
+    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>>;
+}
+
+/// The Ast is responsible for generic the core items in the tree. These are mostly one-to-one
+/// relationships with Rust items. Additional supporting elements are done through later `Ir`
+/// traits.
+pub trait Ast {
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>>;
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Ty {
@@ -83,19 +95,6 @@ impl Ty {
     }
 }
 
-/// Each argument and return value in Thrift is actually just a struct, which means we need to
-/// generate a new one for each of those items.
-pub trait IrArgStruct {
-    fn ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>>;
-}
-
-/// The Ast is responsible for generic the core items in the tree. These are mostly one-to-one
-/// relationships with Rust items. Additional supporting elements are done through later `Ir`
-/// traits.
-pub trait Ast {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>>;
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Include {
     path: String
@@ -105,6 +104,13 @@ pub struct Include {
 pub struct Service {
     ident: String,
     methods: Vec<ServiceMethod>
+}
+
+impl SecondPhaseIR for Service {
+    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        vec![]
+    }
 }
 
 impl Ast for Service {
@@ -136,7 +142,7 @@ impl Ast for Service {
                     abi: syntax::abi::Abi::RustCall,
                     decl: P(ast::FnDecl {
                         inputs: inputs,
-                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, tangle::Future<$ty>)),
+                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, Future<$ty>)),
                         variadic: false
                     }),
                     generics: ast::Generics::default(),
@@ -186,6 +192,19 @@ pub struct ServiceMethod {
 pub struct Enum {
     ident: String,
     variants: Vec<String>
+}
+
+impl SecondPhaseIR for Enum {
+    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        vec![quote_item!(cx, impl Serialize for $ident {
+            fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
+                where S: Serializer + ThriftSerializer
+            {
+                Ok(())
+            }
+        }).unwrap()]
+    }
 }
 
 impl Ast for Enum {
@@ -246,6 +265,19 @@ impl Ast for Enum {
 pub struct Struct {
     ident: String,
     fields: Vec<StructField>
+}
+
+impl SecondPhaseIR for Struct {
+    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        vec![quote_item!(cx, impl Serialize for $ident {
+            fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
+                where S: Serializer + ThriftSerializer
+            {
+                Ok(())
+            }
+        }).unwrap()]
+    }
 }
 
 impl Ast for Struct {
@@ -331,6 +363,12 @@ pub struct Typedef(pub Ty, pub String);
 pub struct Namespace {
     pub lang: String,
     pub module: String
+}
+
+impl SecondPhaseIR for Namespace {
+    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
+        vec![]
+    }
 }
 
 impl Ast for Namespace {
@@ -702,7 +740,7 @@ impl<'a> Parser<'a> {
         Ok(ident)
     }
 
-    pub fn parse_item(&mut self) -> Result<Box<Ast>, Error> {
+    pub fn parse_item(&mut self) -> Result<Box<SecondPhaseIR>, Error> {
         if self.lookahead_keyword(Keyword::Namespace) {
             Ok(Box::new(self.parse_namespace()?))
         } else if self.lookahead_keyword(Keyword::Enum) {
