@@ -10,7 +10,7 @@ extern crate syntax;
 
 use std::char;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Ty {
     String,
     Void,
@@ -24,6 +24,7 @@ pub enum Ty {
     List(Box<Ty>),
     Set(Box<Ty>),
     Map(Box<Ty>, Box<Ty>),
+    Option(Box<Ty>),
     // User-defined type.
     Ident(String)
 }
@@ -57,6 +58,10 @@ impl Ty {
             &Ty::I32 => quote_ty!(cx, i32),
             &Ty::I64 => quote_ty!(cx, i64),
             &Ty::Double => quote_ty!(cx, f64),
+            &Ty::Option(ref t) => {
+                let inner = t.to_ast(cx);
+                quote_ty!(cx, Option<$inner>)
+            },
             &Ty::List(ref s) => {
                 let inner = s.to_ast(cx);
                 quote_ty!(cx, Vec<$inner>)
@@ -114,20 +119,13 @@ impl Ast for Service {
             let mut inputs = vec![
                 ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
             ];
-            let ty = cx.ty_ident(span, token::str_to_ident(match &*method.ty {
-                "void" => "()",
-                "string" => "String",
-                ty => ty
-            }));
+            let ty = method.ty.to_ast(cx);
 
             for arg in method.args.iter() {
                 let arg_ident = token::str_to_ident(&arg.ident);
+                let arg_ty = arg.ty.to_ast(cx);
                 inputs.push(
-                    cx.arg(span, arg_ident, cx.ty_ident(span, token::str_to_ident(match &*method.ty {
-                        "void" => "()",
-                        "string" => "String",
-                        ty => ty
-                    })))
+                    cx.arg(span, arg_ident, arg_ty)
                 );
             }
 
@@ -179,7 +177,7 @@ impl Ast for Service {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ServiceMethod {
     ident: String,
-    ty: String,
+    ty: Ty,
     attr: FieldAttribute,
     args: Vec<StructField>
 }
@@ -257,12 +255,12 @@ impl Ast for Struct {
 
         for node in self.fields.iter() {
             let span = cx.call_site();
-            let mut ty = map_ty(&node.ty);
+            let mut ty = node.ty.clone();
 
             match node.attr {
                 FieldAttribute::Required => {},
                 // XXX: We need to map the inner `node.ty` to a proper Rust type.
-                FieldAttribute::Optional => ty = map_ty(&format!("Option<{}>", node.ty)),
+                FieldAttribute::Optional => ty = Ty::Option(Box::new(ty)),
                 _ => panic!("Oneway is not supported for struct fields.")
             }
 
@@ -270,7 +268,7 @@ impl Ast for Struct {
                 node: ast::StructField_ {
                     kind: ast::StructFieldKind::NamedField(token::str_to_ident(&node.ident), ast::Visibility::Public),
                     id: ast::DUMMY_NODE_ID,
-                    ty: cx.ty_ident(span, ty),
+                    ty: ty.to_ast(cx),
                     attrs: Vec::new()
                 },
                 span: span
@@ -322,7 +320,7 @@ pub enum FieldAttribute {
 pub struct StructField {
     seq: i16,
     attr: FieldAttribute,
-    ty: String,
+    ty: Ty,
     ident: String
 }
 
@@ -472,7 +470,7 @@ impl<'a> Parser<'a> {
             return Err(Error::MissingFieldAttribute);
         };
 
-        let ty = self.parse_ident()?;
+        let ty = self.parse_ty()?;
         let ident = self.parse_ident()?;
 
         Ok(StructField {
@@ -576,7 +574,7 @@ impl<'a> Parser<'a> {
                 FieldAttribute::Required
             };
 
-            let method_ty = self.parse_ident()?;
+            let method_ty = self.parse_ty()?;
             let method_ident = self.parse_ident()?;
             let mut method_fields = Vec::new();
 
@@ -589,7 +587,7 @@ impl<'a> Parser<'a> {
 
                 let seq = self.parse_number()?;
                 self.expect(&Token::Colon)?;
-                let field_ty = self.parse_ident()?;
+                let field_ty = self.parse_ty()?;
                 let field_ident = self.parse_ident()?;
 
                 method_fields.push(StructField {
@@ -1186,7 +1184,7 @@ mod tests {
         assert_eq!(&*def.ident, "Flock");
         assert_eq!(def.methods.len(), 1);
         assert_eq!(&*def.methods[0].ident, "ping");
-        assert_eq!(&*def.methods[0].ty, "void");
+        assert_eq!(def.methods[0].ty, Ty::Void);
         assert_eq!(def.methods[0].attr, FieldAttribute::Required);
         assert_eq!(def.methods[0].args.len(), 0);
     }
@@ -1200,13 +1198,13 @@ mod tests {
         assert_eq!(&*def.ident, "Beans");
         assert_eq!(def.methods.len(), 1);
         assert_eq!(&*def.methods[0].ident, "poutine");
-        assert_eq!(&*def.methods[0].ty, "void");
+        assert_eq!(def.methods[0].ty, Ty::Void);
         assert_eq!(def.methods[0].attr, FieldAttribute::Required);
         assert_eq!(def.methods[0].args.len(), 1);
         assert_eq!(def.methods[0].args[0], StructField {
             seq: 1,
             attr: FieldAttribute::Required,
-            ty: "string".to_string(),
+            ty: Ty::String,
             ident: "firstName".to_string()
         });
     }
@@ -1220,7 +1218,7 @@ mod tests {
         assert_eq!(&*def.ident, "Flock");
         assert_eq!(def.methods.len(), 1);
         assert_eq!(&*def.methods[0].ident, "ping");
-        assert_eq!(&*def.methods[0].ty, "void");
+        assert!(def.methods[0].ty == Ty::Void);
         assert_eq!(def.methods[0].attr, FieldAttribute::Oneway);
         assert_eq!(def.methods[0].args.len(), 0);
     }
@@ -1264,7 +1262,7 @@ mod tests {
         let mut p = Parser::new("1: optional i32 foobar");
         let def = p.parse_struct_field().unwrap();
         assert_eq!(&*def.ident, "foobar");
-        assert_eq!(&*def.ty, "i32");
+        assert_eq!(def.ty, Ty::I32);
         assert_eq!(def.seq, 1);
         assert_eq!(def.attr, FieldAttribute::Optional);
     }
@@ -1274,7 +1272,7 @@ mod tests {
         let mut p = Parser::new("1: required i32 foobar");
         let def = p.parse_struct_field().unwrap();
         assert_eq!(&*def.ident, "foobar");
-        assert_eq!(&*def.ty, "i32");
+        assert_eq!(def.ty, Ty::I32);
         assert_eq!(def.seq, 1);
         assert_eq!(def.attr, FieldAttribute::Required);
     }
