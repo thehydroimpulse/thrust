@@ -10,6 +10,74 @@ extern crate syntax;
 
 use std::char;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Ty {
+    String,
+    Void,
+    Byte,
+    Bool,
+    Binary,
+    I16,
+    I32,
+    I64,
+    Double,
+    List(Box<Ty>),
+    Set(Box<Ty>),
+    Map(Box<Ty>, Box<Ty>),
+    // User-defined type.
+    Ident(String)
+}
+
+impl From<String> for Ty {
+    fn from(val: String) -> Ty {
+        match &*val {
+            "string" => Ty::String,
+            "void" => Ty::Void,
+            "byte" => Ty::Byte,
+            "bool" => Ty::Bool,
+            "binary" => Ty::Binary,
+            "i16" => Ty::I16,
+            "i32" => Ty::I32,
+            "i64" => Ty::I64,
+            "double" => Ty::Double,
+            _ => Ty::Ident(val)
+        }
+    }
+}
+
+impl Ty {
+    pub fn to_ast(&self, cx: &mut ExtCtxt) -> P<ast::Ty> {
+        match self {
+            &Ty::String => quote_ty!(cx, String),
+            &Ty::Void => quote_ty!(cx, ()),
+            &Ty::Byte => quote_ty!(cx, i8),
+            &Ty::Bool => quote_ty!(cx, bool),
+            &Ty::Binary => quote_ty!(cx, Vec<i8>),
+            &Ty::I16 => quote_ty!(cx, i16),
+            &Ty::I32 => quote_ty!(cx, i32),
+            &Ty::I64 => quote_ty!(cx, i64),
+            &Ty::Double => quote_ty!(cx, f64),
+            &Ty::List(ref s) => {
+                let inner = s.to_ast(cx);
+                quote_ty!(cx, Vec<$inner>)
+            },
+            &Ty::Set(ref s) => {
+                let inner = s.to_ast(cx);
+                quote_ty!(cx, HashSet<$inner>)
+            },
+            &Ty::Map(ref a, ref b) => {
+                let a = a.to_ast(cx);
+                let b = b.to_ast(cx);
+                quote_ty!(cx, HashMap<$a, $b>)
+            },
+            &Ty::Ident(ref s) => {
+                let span = cx.call_site();
+                cx.ty_ident(span, token::str_to_ident(&s))
+            }
+        }
+    }
+}
+
 /// Each argument and return value in Thrift is actually just a struct, which means we need to
 /// generate a new one for each of those items.
 pub trait IrArgStruct {
@@ -43,17 +111,34 @@ impl Ast for Service {
         for method in self.methods.iter() {
             let method_ident = token::str_to_ident(&method.ident);
             let self_ident = token::str_to_ident("self");
-            println!("Compiling {:?}", method_ident);
+            let mut inputs = vec![
+                ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
+            ];
+            let ty = cx.ty_ident(span, token::str_to_ident(match &*method.ty {
+                "void" => "()",
+                "string" => "String",
+                ty => ty
+            }));
+
+            for arg in method.args.iter() {
+                let arg_ident = token::str_to_ident(&arg.ident);
+                inputs.push(
+                    cx.arg(span, arg_ident, cx.ty_ident(span, token::str_to_ident(match &*method.ty {
+                        "void" => "()",
+                        "string" => "String",
+                        ty => ty
+                    })))
+                );
+            }
+
             let method_node = ast::TraitItemKind::Method(
                 ast::MethodSig {
                     unsafety: ast::Unsafety::Normal,
                     constness: ast::Constness::NotConst,
                     abi: syntax::abi::Abi::RustCall,
                     decl: P(ast::FnDecl {
-                        inputs: vec![
-                            ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
-                        ],
-                        output: ast::FunctionRetTy::None(span),
+                        inputs: inputs,
+                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, tangle::Future<$ty>)),
                         variadic: false
                     }),
                     generics: ast::Generics::default(),
@@ -242,10 +327,7 @@ pub struct StructField {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Ty(pub String);
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Typedef(pub String, pub String);
+pub struct Typedef(pub Ty, pub String);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Namespace {
@@ -459,7 +541,7 @@ impl<'a> Parser<'a> {
     pub fn parse_typedef(&mut self) -> Result<Typedef, Error> {
         self.expect_keyword(Keyword::Typedef)?;
 
-        Ok(Typedef(self.expect_ident()?, self.expect_ident()?))
+        Ok(Typedef(self.parse_ty()?, self.expect_ident()?))
     }
 
     pub fn parse_namespace(&mut self) -> Result<Namespace, Error> {
@@ -585,6 +667,31 @@ impl<'a> Parser<'a> {
 
         self.bump();
         Ok(i)
+    }
+
+    pub fn parse_ty(&mut self) -> Result<Ty, Error> {
+        let ident = self.parse_ident()?;
+        // map, set, list
+        if self.eat(&Token::LAngle) {
+            let ty = match &*ident {
+                "map" => {
+                    let a = self.parse_ty()?;
+                    self.expect(&Token::Comma)?;
+                    let b = self.parse_ty()?;
+
+                    Ty::Map(Box::new(a), Box::new(b))
+                },
+                "set" => Ty::Set(Box::new(self.parse_ty()?)),
+                "list" => Ty::List(Box::new(self.parse_ty()?)),
+                _ => panic!("Error!")
+            };
+
+            self.expect(&Token::RAngle)?;
+
+            Ok(ty)
+        } else {
+            Ok(Ty::from(ident))
+        }
     }
 
     pub fn expect_ident(&mut self) -> Result<String, Error> {
@@ -948,10 +1055,100 @@ mod tests {
     }
 
     #[test]
+    fn parse_bool_ty() {
+        let mut p = Parser::new("bool");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Bool);
+    }
+
+    #[test]
+    fn parse_binary_ty() {
+        let mut p = Parser::new("binary");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Binary);
+    }
+
+    #[test]
+    fn parse_byte_ty() {
+        let mut p = Parser::new("byte");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Byte);
+    }
+
+    #[test]
+    fn parse_i16_ty() {
+        let mut p = Parser::new("i16");
+        assert_eq!(p.parse_ty().unwrap(), Ty::I16);
+    }
+
+    #[test]
+    fn parse_i32_ty() {
+        let mut p = Parser::new("i32");
+        assert_eq!(p.parse_ty().unwrap(), Ty::I32);
+    }
+
+    #[test]
+    fn parse_i64_ty() {
+        let mut p = Parser::new("i64");
+        assert_eq!(p.parse_ty().unwrap(), Ty::I64);
+    }
+
+    #[test]
+    fn parse_double_ty() {
+        let mut p = Parser::new("double");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Double);
+    }
+
+    #[test]
+    fn parse_string_ty() {
+        let mut p = Parser::new("string");
+        assert_eq!(p.parse_ty().unwrap(), Ty::String);
+    }
+
+    #[test]
+    fn parse_list_string_ty() {
+        let mut p = Parser::new("list<string>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::List(Box::new(Ty::String)));
+    }
+
+    #[test]
+    fn parse_list_double_ty() {
+        let mut p = Parser::new("list<double>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::List(Box::new(Ty::Double)));
+    }
+
+    #[test]
+    fn parse_list_list_byte_ty() {
+        let mut p = Parser::new("list<list<byte>>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::List(Box::new(Ty::List(Box::new(Ty::Byte)))));
+    }
+
+    #[test]
+    fn parse_set_byte_ty() {
+        let mut p = Parser::new("set<byte>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Set(Box::new(Ty::Byte)));
+    }
+
+    #[test]
+    fn parse_set_string_ty() {
+        let mut p = Parser::new("set<string>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Set(Box::new(Ty::String)));
+    }
+
+    #[test]
+    fn parse_map_i32_string_ty() {
+        let mut p = Parser::new("map<i32,string>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Map(Box::new(Ty::I32), Box::new(Ty::String)));
+    }
+
+    #[test]
+    fn parse_map_i32_list_string_ty() {
+        let mut p = Parser::new("map<i32,list<string>>");
+        assert_eq!(p.parse_ty().unwrap(), Ty::Map(Box::new(Ty::I32), Box::new(Ty::List(Box::new(Ty::String)))));
+    }
+
+    #[test]
     fn parse_typedef() {
         let mut p = Parser::new("typedef i32 MyInteger");
         let def = p.parse_typedef().unwrap();
-        assert_eq!(&*def.0, "i32");
+        assert_eq!(def.0, Ty::I32);
         assert_eq!(&*def.1, "MyInteger");
     }
 
