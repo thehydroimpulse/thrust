@@ -20,7 +20,7 @@ thrust!("
     }
 
     service FlockDb {
-        void query();
+        map<string, byte> query(1: string voodoo);
     }
 ");
 
