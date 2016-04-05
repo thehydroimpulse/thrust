@@ -34,6 +34,63 @@ pub struct Service {
     methods: Vec<ServiceMethod>
 }
 
+impl Ast for Service {
+    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
+        let span = cx.call_site();
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        let mut items = Vec::new();
+
+        for method in self.methods.iter() {
+            let method_ident = token::str_to_ident(&method.ident);
+            let self_ident = token::str_to_ident("self");
+            println!("Compiling {:?}", method_ident);
+            let method_node = ast::TraitItemKind::Method(
+                ast::MethodSig {
+                    unsafety: ast::Unsafety::Normal,
+                    constness: ast::Constness::NotConst,
+                    abi: syntax::abi::Abi::RustCall,
+                    decl: P(ast::FnDecl {
+                        inputs: vec![
+                            ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
+                        ],
+                        output: ast::FunctionRetTy::None(span),
+                        variadic: false
+                    }),
+                    generics: ast::Generics::default(),
+                    explicit_self: ast::ExplicitSelf {
+                        node: ast::SelfKind::Region(None, ast::Mutability::Mutable, self_ident),
+                        span: span
+                    }
+                },
+                None
+            );
+
+            let mut item = ast::TraitItem {
+                id: ast::DUMMY_NODE_ID,
+                ident: method_ident,
+                attrs: Vec::new(),
+                node: method_node,
+                span: span
+            };
+
+            items.push(item);
+        }
+
+
+        let kind = ast::ItemKind::Trait(ast::Unsafety::Normal, ast::Generics::default(), P::new(), items);
+        let item = P(ast::Item {
+            ident: ident,
+            attrs: vec![],
+            id: ast::DUMMY_NODE_ID,
+            node: kind,
+            vis: ast::Visibility::Public,
+            span: span
+        });
+
+        quote_item!(cx, $item)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ServiceMethod {
     ident: String,
@@ -547,6 +604,8 @@ impl<'a> Parser<'a> {
             Ok(Box::new(self.parse_enum()?))
         } else if self.lookahead_keyword(Keyword::Struct) {
             Ok(Box::new(self.parse_struct()?))
+        } else if self.lookahead_keyword(Keyword::Service) {
+            Ok(Box::new(self.parse_service()?))
         } else {
             Err(Error::NoMoreItems)
         }

@@ -7,3 +7,6 @@ authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [dependencies.thrust_macros]
 path = "../thrust-macros"
+
+[dependencies.thrust]
+path = ".."

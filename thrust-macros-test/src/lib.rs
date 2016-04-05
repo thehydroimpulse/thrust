@@ -1,6 +1,8 @@
 #![feature(plugin)]
 #![plugin(thrust_macros)]
 
+extern crate thrust;
+
 thrust!("
     namespace rust foobar1
 
@@ -15,6 +17,10 @@ thrust!("
 
     struct Message {
         1: required i32 foobar;
+    }
+
+    service FlockDb {
+        void query();
     }
 ");
 

@@ -8,36 +8,26 @@ extern crate rustc_plugin;
 
 use thrust_parser::{Ast, Parser};
 use syntax::util::small_vector::SmallVector;
-use std::mem;
 use std::iter::Iterator;
 use syntax::codemap::Span;
 use syntax::fold::Folder;
-use syntax::parse::{self, parser};
-use syntax::parse::token::{self, Token};
-use syntax::parse::token::keywords;
+use syntax::parse::{parser, token};
 use syntax::print::pprust;
 use syntax::ast::{self, TokenTree};
 use syntax::ptr::P;
 use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, MacEager};
-use syntax::ext::build::AstBuilder;  // trait for expr_usize
 use rustc_plugin::Registry;
-
-pub enum State {
-    Begin
-}
 
 pub struct Compiler<'a: 'x, 'x> {
     inner: parser::Parser<'a>,
-    cx: &'x mut ExtCtxt<'a>,
-    state: State
+    cx: &'x mut ExtCtxt<'a>
 }
 
 impl<'a, 'x> Compiler<'a, 'x> {
     pub fn new(cx: &'x mut ExtCtxt<'a>, args: &[TokenTree]) -> Compiler<'a, 'x> {
         Compiler::<'a, 'x> {
             inner: cx.new_parser_from_tts::<'a>(args),
-            cx: cx,
-            state: State::Begin
+            cx: cx
         }
     }
 
@@ -95,17 +85,12 @@ impl<'a, 'x> Compiler<'a, 'x> {
         // pieces.push(parser.parse_struct()?.ir(self.cx));
 
         Ok(quote_item!(self.cx, pub mod $module {
+            #![allow(dead_code, unused_imports)]
+            use thrust::protocol::{ThriftDeserializer, ThriftSerializer};
+            use thrust::protocol::{Serializer, Deserializer};
+            use thrust::protocol::{Deserialize, Serialize};
             $items
         }).unwrap())
-    }
-
-    fn get_ident_from_pat(&mut self, pat: P<ast::Pat>) -> ast::Ident {
-        match pat.node {
-            ast::PatKind::Ident(mode, ref span, ref p) => {
-                span.node
-            },
-            _ => panic!("Error")
-        }
     }
 }
 
