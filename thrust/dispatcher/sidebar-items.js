@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Incoming",""],["Role",""]],"struct":[["Dispatcher","A middleman between incoming and outgoing messages from the event loop and clients or servers. Each instance of a server or client has it's own Dispatcher."]]});

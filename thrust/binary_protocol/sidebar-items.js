@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["THRIFT_TYPE_MASK",""],["THRIFT_VERSION_1",""],["THRIFT_VERSION_MASK",""]],"struct":[["BinaryDeserializer",""],["BinarySerializer",""]]});

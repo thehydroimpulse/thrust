@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors['mempool'] = ["impl&lt;T: <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Send.html' title='core::marker::Send'>Send</a> + 'static&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='mempool/struct.Pool.html' title='mempool::Pool'>Pool</a>&lt;T&gt;",];implementors['bytes'] = ["impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='bytes/alloc/struct.MemRef.html' title='bytes::alloc::MemRef'>MemRef</a>","impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='bytes/struct.Bytes.html' title='bytes::Bytes'>Bytes</a>",];implementors['libc'] = [];implementors['bytes'] = ["impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='bytes/alloc/struct.MemRef.html' title='bytes::alloc::MemRef'>MemRef</a>","impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='bytes/struct.Bytes.html' title='bytes::Bytes'>Bytes</a>",];implementors['tangle'] = [];implementors['mio'] = ["impl&lt;H: <a class='trait' href='mio/trait.Handler.html' title='mio::Handler'>Handler</a>&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='mio/struct.EventLoop.html' title='mio::EventLoop'>EventLoop</a>&lt;H&gt;",];implementors['thrust'] = [];
+
+            if (window.register_implementors) {
+                window.register_implementors(implementors);
+            } else {
+                window.pending_implementors = implementors;
+            }
+        
+})()

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `BinarySerializer` struct in crate `thrust`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, BinarySerializer">
+
+    <title>thrust::binary_protocol::BinarySerializer - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'><a href='../index.html'>thrust</a>::<wbr><a href='index.html'>binary_protocol</a></p><script>window.sidebarCurrent = {name: 'BinarySerializer', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../index.html'>thrust</a>::<wbr><a href='index.html'>binary_protocol</a>::<wbr><a class='struct' href=''>BinarySerializer</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-732' class='srclink' href='../../src/thrust/src/binary_protocol.rs.html#12-14' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct BinarySerializer&lt;'a&gt; {
+    // some fields omitted
+}</pre><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl&lt;'a&gt; <a class='struct' href='../../thrust/binary_protocol/struct.BinarySerializer.html' title='thrust::binary_protocol::BinarySerializer'>BinarySerializer</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.new' class='method'><code>fn <a href='#method.new' class='fnname'>new</a>(wr: &amp;'a mut <a class='trait' href='https://doc.rust-lang.org/nightly/std/io/trait.Write.html' title='std::io::Write'>Write</a>) -&gt; <a class='struct' href='../../thrust/binary_protocol/struct.BinarySerializer.html' title='thrust::binary_protocol::BinarySerializer'>BinarySerializer</a>&lt;'a&gt;</code></h4>
+</div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='../../thrust/protocol/trait.Serializer.html' title='thrust::protocol::Serializer'>Serializer</a> for <a class='struct' href='../../thrust/binary_protocol/struct.BinarySerializer.html' title='thrust::binary_protocol::BinarySerializer'>BinarySerializer</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.serialize_bool' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_bool' class='fnname'>serialize_bool</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_usize' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_usize' class='fnname'>serialize_usize</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_isize' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_isize' class='fnname'>serialize_isize</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.isize.html'>isize</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_u64' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_u64' class='fnname'>serialize_u64</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.u64.html'>u64</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_i64' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_i64' class='fnname'>serialize_i64</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.i64.html'>i64</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_u32' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_u32' class='fnname'>serialize_u32</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.u32.html'>u32</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_i32' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_i32' class='fnname'>serialize_i32</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.i32.html'>i32</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_u16' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_u16' class='fnname'>serialize_u16</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.u16.html'>u16</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_i16' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_i16' class='fnname'>serialize_i16</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.i16.html'>i16</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_u8' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_u8' class='fnname'>serialize_u8</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.u8.html'>u8</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_i8' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_i8' class='fnname'>serialize_i8</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.i8.html'>i8</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_bytes' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_bytes' class='fnname'>serialize_bytes</a>(&amp;mut self, val: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;[</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.u8.html'>u8</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_str' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_str' class='fnname'>serialize_str</a>(&amp;mut self, val: &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.serialize_string' class='method'><code>fn <a href='../../thrust/protocol/trait.Serializer.html#tymethod.serialize_string' class='fnname'>serialize_string</a>(&amp;mut self, val: <a class='struct' href='https://doc.rust-lang.org/nightly/collections/string/struct.String.html' title='collections::string::String'>String</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+</div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='../../thrust/protocol/trait.ThriftSerializer.html' title='thrust::protocol::ThriftSerializer'>ThriftSerializer</a> for <a class='struct' href='../../thrust/binary_protocol/struct.BinarySerializer.html' title='thrust::binary_protocol::BinarySerializer'>BinarySerializer</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.write_message_begin' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_message_begin' class='fnname'>write_message_begin</a>(&amp;mut self, name: &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>, message_type: <a class='enum' href='../../thrust/protocol/enum.ThriftMessageType.html' title='thrust::protocol::ThriftMessageType'>ThriftMessageType</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_struct_begin' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_struct_begin' class='fnname'>write_struct_begin</a>(&amp;mut self, name: &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_struct_end' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_struct_end' class='fnname'>write_struct_end</a>(&amp;mut self) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_field_begin' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_field_begin' class='fnname'>write_field_begin</a>(&amp;mut self, name: &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>, ty: <a class='enum' href='../../thrust/protocol/enum.ThriftType.html' title='thrust::protocol::ThriftType'>ThriftType</a>, id: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.i16.html'>i16</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_field_end' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_field_end' class='fnname'>write_field_end</a>(&amp;mut self) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_field_stop' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_field_stop' class='fnname'>write_field_stop</a>(&amp;mut self) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+<h4 id='method.write_message_end' class='method'><code>fn <a href='../../thrust/protocol/trait.ThriftSerializer.html#method.write_message_end' class='fnname'>write_message_end</a>(&amp;mut self) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='enum' href='../../thrust/protocol/enum.Error.html' title='thrust::protocol::Error'>Error</a>&gt;</code></h4>
+</div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "thrust";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../../jquery.js"></script>
+    <script src="../../main.js"></script>
+    
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

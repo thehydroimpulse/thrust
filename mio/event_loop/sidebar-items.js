@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["EventLoop","Single threaded IO event loop."],["EventLoopBuilder",""],["Sender","Sends messages to the EventLoop from other threads."]]});

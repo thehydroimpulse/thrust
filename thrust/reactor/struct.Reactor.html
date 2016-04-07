@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `Reactor` struct in crate `thrust`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, Reactor">
+
+    <title>thrust::reactor::Reactor - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'><a href='../index.html'>thrust</a>::<wbr><a href='index.html'>reactor</a></p><script>window.sidebarCurrent = {name: 'Reactor', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../index.html'>thrust</a>::<wbr><a href='index.html'>reactor</a>::<wbr><a class='struct' href=''>Reactor</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-280' class='srclink' href='../../src/thrust/src/reactor.rs.html#319-330' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct Reactor {
+    // some fields omitted
+}</pre><div class='docblock'><p>The <code>Reactor</code> is the component that interacts with networking. The reactor is
+built around Mio&#39;s event loop and manages both TcpListeners and TcpStreams.</p>
+
+<p>The reactor isn&#39;t responsible for anything Thrift related, so it doesn&#39;t know
+about parsing, protocols, serialization, etc... All it&#39;s responsible for
+is sending and receiving data from various connections and dispatching them
+to the appropriate channels.</p>
+
+<p>To communicate into the event loop, you use a copy of Mio&#39;s <code>Sender</code> channel
+type to send <code>Message</code>s. These will be intercepted in the event loop and processed.</p>
+
+<p>Things you might send to the <code>Reactor</code> through this mechanism:</p>
+
+<ol>
+<li>Binding a new TCP listener &mdash; Each reactor is capable of handling an unbounded
+number of listeners, who will all be able to accept new sockets.</li>
+</ol>
+
+<p>Binding a new listener requires that you have already established a blocking variant
+through <code>net::TcpListener</code>. The listener will be converted to Mio&#39;s non-blocking variant.</p>
+
+<pre><code class="language-notrust">use std::net::TcpListener;
+use std::sync::mpsc::channel;
+
+// The channel is used as a channel. Any socket being accepted
+// by this listener will also use this channel (the sender part).
+let (tx, rx) = channel();
+let addr = &quot;127.0.0.1:4566&quot;.parse().unwrap();
+
+reactor_sender.send(Message::Bind(addr, tx));
+</code></pre>
+
+<ol>
+<li>Connecting to a remote TCP server and establishing a new non-blocking <code>TcpStream</code>.</li>
+</ol>
+
+<pre><code class="language-notrust">use std::sync::mpsc::channel;
+
+// The callback channel on the single socket.
+let (tx, rx) = channel();
+let addr = &quot;127.0.0.1::4566&quot;.parse().unwrap();
+reactor_sender.send(Message::Connect(addr, tx));
+</code></pre>
+
+<ol>
+<li>Sending RPC calls (initiating or reply) to a socket. Instead of writing or reading
+primitives, we boil everything down to Rpc or Data messages, each with an associative Token
+to mark the responsible <code>TcpStream</code> or <code>Connection</code>.</li>
+</ol>
+
+<pre><code class="language-notrust">reactor_sender.send(Message::Rpc(Token(1), vec![0, 1, 3, 4]));
+</code></pre>
+</div><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl <a class='struct' href='../../thrust/reactor/struct.Reactor.html' title='thrust::reactor::Reactor'>Reactor</a></code></h3><div class='impl-items'><h4 id='method.new' class='method'><code>fn <a href='#method.new' class='fnname'>new</a>() -&gt; <a class='struct' href='../../thrust/reactor/struct.Reactor.html' title='thrust::reactor::Reactor'>Reactor</a></code></h4>
+<h4 id='method.run' class='method'><code>fn <a href='#method.run' class='fnname'>run</a>() -&gt; <a class='struct' href='https://doc.rust-lang.org/nightly/std/thread/struct.JoinHandle.html' title='std::thread::JoinHandle'>JoinHandle</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<h4 id='method.incoming_timeout' class='method'><code>fn <a href='#method.incoming_timeout' class='fnname'>incoming_timeout</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, timeout: <a class='enum' href='../../thrust/reactor/enum.Timeout.html' title='thrust::reactor::Timeout'>Timeout</a>) -&gt; <a class='type' href='../../thrust/type.ThrustResult.html' title='thrust::ThrustResult'>ThrustResult</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<h4 id='method.incoming_msg' class='method'><code>fn <a href='#method.incoming_msg' class='fnname'>incoming_msg</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, msg: <a class='enum' href='../../thrust/reactor/enum.Message.html' title='thrust::reactor::Message'>Message</a>) -&gt; <a class='type' href='../../thrust/type.ThrustResult.html' title='thrust::ThrustResult'>ThrustResult</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<h4 id='method.accept_connection' class='method'><code>fn <a href='#method.accept_connection' class='fnname'>accept_connection</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, token: <a class='struct' href='../../mio/token/struct.Token.html' title='mio::token::Token'>Token</a>)</code></h4>
+</div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><code>impl <a class='trait' href='../../mio/handler/trait.Handler.html' title='mio::handler::Handler'>Handler</a> for <a class='struct' href='../../thrust/reactor/struct.Reactor.html' title='thrust::reactor::Reactor'>Reactor</a></code></h3><div class='impl-items'><h4 id='associatedtype.Timeout' class='type'><code>type <a href='../../mio/handler/trait.Handler.html#associatedtype.Timeout' class='type'>Timeout</a> = <a class='enum' href='../../thrust/reactor/enum.Timeout.html' title='thrust::reactor::Timeout'>Timeout</a></code></h4>
+<h4 id='associatedtype.Message' class='type'><code>type <a href='../../mio/handler/trait.Handler.html#associatedtype.Message' class='type'>Message</a> = <a class='enum' href='../../thrust/reactor/enum.Message.html' title='thrust::reactor::Message'>Message</a></code></h4>
+<h4 id='method.ready' class='method'><code>fn <a href='../../mio/handler/trait.Handler.html#method.ready' class='fnname'>ready</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, token: <a class='struct' href='../../mio/token/struct.Token.html' title='mio::token::Token'>Token</a>, events: <a class='struct' href='../../mio/event/struct.EventSet.html' title='mio::event::EventSet'>EventSet</a>)</code></h4>
+<h4 id='method.timeout' class='method'><code>fn <a href='../../mio/handler/trait.Handler.html#method.timeout' class='fnname'>timeout</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, timeout: <a class='enum' href='../../thrust/reactor/enum.Timeout.html' title='thrust::reactor::Timeout'>Timeout</a>)</code></h4>
+<h4 id='method.notify' class='method'><code>fn <a href='../../mio/handler/trait.Handler.html#method.notify' class='fnname'>notify</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;, msg: <a class='enum' href='../../thrust/reactor/enum.Message.html' title='thrust::reactor::Message'>Message</a>)</code></h4>
+<h4 id='method.interrupted' class='method'><code>fn <a href='../../mio/handler/trait.Handler.html#method.interrupted' class='fnname'>interrupted</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;)</code></h4>
+<h4 id='method.tick' class='method'><code>fn <a href='../../mio/handler/trait.Handler.html#method.tick' class='fnname'>tick</a>(&amp;mut self, event_loop: &amp;mut <a class='struct' href='../../mio/event_loop/struct.EventLoop.html' title='mio::event_loop::EventLoop'>EventLoop</a>&lt;Self&gt;)</code></h4>
+</div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "thrust";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../../jquery.js"></script>
+    <script src="../../main.js"></script>
+    
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>
