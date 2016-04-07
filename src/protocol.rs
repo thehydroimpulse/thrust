@@ -65,7 +65,7 @@ impl convert::From<i8> for ThriftType {
             13 => ThriftType::Map,
             14 => ThriftType::Set,
             15 => ThriftType::List,
-            _ => panic!("Unexpected value")
+            e => panic!("Unexpected value: {}", e)
         }
     }
 }
@@ -163,7 +163,7 @@ pub struct ThriftMessage {
     pub ty: ThriftMessageType,
     pub seq: i16
 }
-
+#[derive(Debug)]
 pub struct ThriftField {
     pub name: Option<String>,
     pub ty: ThriftType,

@@ -27,6 +27,3 @@ git = "https://github.com/carllerche/mio"
 
 [dependencies.bytes]
 git = "https://github.com/carllerche/bytes"
-
-[dependencies.thrust_parser]
-path = "./thrust-parser"

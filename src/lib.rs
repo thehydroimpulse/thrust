@@ -21,13 +21,13 @@ use std::string;
 
 mod util;
 mod event_loop;
-mod reactor;
+pub mod reactor;
 pub mod protocol;
 pub mod binary_protocol;
 // mod service;
 mod pipeline;
 mod runner;
-mod dispatcher;
+pub mod dispatcher;
 mod result;
 mod transport;
 

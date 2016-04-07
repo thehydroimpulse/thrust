@@ -92,7 +92,13 @@ impl<'a, 'x> Compiler<'a, 'x> {
 
         Ok(quote_item!(self.cx, pub mod $module {
             #![allow(dead_code, unused_imports)]
-            use thrust::protocol::Error;
+            use thrust::protocol::{Error, ThriftType};
+            use thrust::{ThrustResult, ThrustError};
+            use thrust::dispatcher::{self, Dispatcher};
+            use thrust::reactor::Message;
+            use std::thread::JoinHandle;
+            use std::net::SocketAddr;
+            use std::sync::mpsc::{Sender, Receiver};
             use tangle::{Future, Async};
             use std::collections::{HashMap, HashSet};
             use thrust::protocol::{ThriftDeserializer, ThriftSerializer};
