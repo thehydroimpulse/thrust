@@ -153,6 +153,34 @@ impl Service {
             }
         }).unwrap()
     }
+
+    pub fn generate_client_service_impl(&self, cx: &mut ExtCtxt) -> P<ast::Item> {
+        let mut ident = token::str_to_ident(&self.ident.clone());
+        let struct_ident = token::str_to_ident(&format!("{}Client", self.ident.clone()));
+
+        quote_item!(cx, impl $ident for $struct_ident {
+            fn query(&mut self, voodoo: String, mission_control: i32) -> Future<String> {
+                use std::io::Cursor;
+                let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
+                let mut buf = Vec::new();
+
+                {
+                    let mut se = BinarySerializer::new(&mut buf);
+                    let args = FlockDb_query_Args {
+                        voodoo: voodoo,
+                        mission_control: mission_control
+                    };
+
+                    args.serialize(&mut se);
+                }
+
+                self.dispatcher.send(Incoming::Call("foobar123".to_string(), buf, res)).unwrap();
+                future.and_then(move |(msg, de)| {
+                    Async::Ok("foobar".to_string())
+                })
+            }
+        }).unwrap()
+    }
 }
 
 impl SecondPhaseIR for Service {
@@ -160,7 +188,8 @@ impl SecondPhaseIR for Service {
         let mut ident = token::str_to_ident(&self.ident.clone());
         let mut method_args_structs = vec![
             self.generate_client_struct(cx),
-            self.generate_client_basic_impl(cx)
+            self.generate_client_basic_impl(cx),
+            self.generate_client_service_impl(cx)
         ];
 
         // For each method, we want to generate a new struct
@@ -328,7 +357,7 @@ impl Ast for Service {
                 ast::MethodSig {
                     unsafety: ast::Unsafety::Normal,
                     constness: ast::Constness::NotConst,
-                    abi: syntax::abi::Abi::RustCall,
+                    abi: syntax::abi::Abi::Rust,
                     decl: P(ast::FnDecl {
                         inputs: inputs,
                         output: ast::FunctionRetTy::Ty(quote_ty!(cx, Future<$ty>)),

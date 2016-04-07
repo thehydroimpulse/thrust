@@ -12,7 +12,7 @@ thrust!("
     namespace rust foobar1
 
     service FlockDb {
-        map<string, byte> query(1: string voodoo, 2: i32 mission_control);
+        string query(1: string voodoo, 2: i32 mission_control);
     }
 ");
 

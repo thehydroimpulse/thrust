@@ -94,7 +94,7 @@ impl<'a, 'x> Compiler<'a, 'x> {
             #![allow(dead_code, unused_imports)]
             use thrust::protocol::{Error, ThriftType};
             use thrust::{ThrustResult, ThrustError};
-            use thrust::dispatcher::{self, Dispatcher};
+            use thrust::dispatcher::{self, Dispatcher, Incoming};
             use thrust::reactor::Message;
             use std::thread::JoinHandle;
             use std::net::SocketAddr;
@@ -103,7 +103,8 @@ impl<'a, 'x> Compiler<'a, 'x> {
             use std::collections::{HashMap, HashSet};
             use thrust::protocol::{ThriftDeserializer, ThriftSerializer};
             use thrust::protocol::{Serializer, Deserializer};
-            use thrust::protocol::{Deserialize, Serialize};
+            use thrust::protocol::{Deserialize, Serialize, ThriftMessage};
+            use thrust::binary_protocol::{BinarySerializer, BinaryDeserializer};
             $items
         }).unwrap())
     }
