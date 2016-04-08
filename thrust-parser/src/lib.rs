@@ -154,32 +154,108 @@ impl Service {
         }).unwrap()
     }
 
+    pub fn client_method_body(&self, cx: &mut ExtCtxt, method: &ServiceMethod) -> P<ast::Expr> {
+        let method_name = method.ident.clone();
+        let struct_name_str = format!("{}_{}_Args", self.ident.clone(), method.ident.clone());
+
+        quote_expr!(cx, {
+            use std::io::Cursor;
+            let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
+            let mut buf = Vec::new();
+
+            {
+                let mut se = BinarySerializer::new(&mut buf);
+                let args = FlockDb_query_Args {
+                    voodoo: voodoo,
+                    mission_control: mission_control
+                };
+
+                args.serialize(&mut se);
+            }
+
+            self.dispatcher.send(Incoming::Call($method_name.to_string(), buf, res)).unwrap();
+            future.and_then(move |(msg, de)| {
+                Async::Ok("foobar".to_string())
+            })
+        })
+    }
+
     pub fn generate_client_service_impl(&self, cx: &mut ExtCtxt) -> P<ast::Item> {
         let mut ident = token::str_to_ident(&self.ident.clone());
         let struct_ident = token::str_to_ident(&format!("{}Client", self.ident.clone()));
+        let mut methods = Vec::new();
+        let span = cx.call_site();
 
-        quote_item!(cx, impl $ident for $struct_ident {
-            fn query(&mut self, voodoo: String, mission_control: i32) -> Future<String> {
-                use std::io::Cursor;
-                let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
-                let mut buf = Vec::new();
+        // Generate a Rust method for each method.
+        for method in self.methods.iter() {
+            let method_ident = token::str_to_ident(&method.ident);
+            let self_ident = token::str_to_ident("self");
+            let mut inputs = vec![
+                ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
+            ];
+            let ty = method.ty.to_ast(cx);
 
-                {
-                    let mut se = BinarySerializer::new(&mut buf);
-                    let args = FlockDb_query_Args {
-                        voodoo: voodoo,
-                        mission_control: mission_control
-                    };
-
-                    args.serialize(&mut se);
-                }
-
-                self.dispatcher.send(Incoming::Call("foobar123".to_string(), buf, res)).unwrap();
-                future.and_then(move |(msg, de)| {
-                    Async::Ok("foobar".to_string())
-                })
+            for arg in method.args.iter() {
+                let arg_ident = token::str_to_ident(&arg.ident);
+                let arg_ty = arg.ty.to_ast(cx);
+                inputs.push(
+                    cx.arg(span, arg_ident, arg_ty)
+                );
             }
-        }).unwrap()
+
+            let method_body = self.client_method_body(cx, method);
+            let method_node = ast::ImplItemKind::Method(
+                ast::MethodSig {
+                    unsafety: ast::Unsafety::Normal,
+                    constness: ast::Constness::NotConst,
+                    abi: syntax::abi::Abi::Rust,
+                    decl: P(ast::FnDecl {
+                        inputs: inputs,
+                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, Future<$ty>)),
+                        variadic: false
+                    }),
+                    generics: ast::Generics::default(),
+                    explicit_self: ast::ExplicitSelf {
+                        node: ast::SelfKind::Region(None, ast::Mutability::Mutable, self_ident),
+                        span: span
+                    }
+                },
+                cx.block(span, Vec::new(), Some(method_body))
+            );
+
+            let mut item = ast::ImplItem {
+                id: ast::DUMMY_NODE_ID,
+                ident: method_ident,
+                vis: ast::Visibility::Inherited,
+                defaultness: ast::Defaultness::Final,
+                attrs: Vec::new(),
+                node: method_node,
+                span: span
+            };
+
+            methods.push(item);
+        }
+
+        let impl_item = ast::ItemKind::Impl(
+            ast::Unsafety::Normal,
+            ast::ImplPolarity::Positive,
+            ast::Generics::default(),
+            Some(ast::TraitRef {
+                path: ast::Path::from_ident(span, vec![struct_ident.clone()]),
+                ref_id: ast::DUMMY_NODE_ID
+            }), // TraitRef
+            cx.ty_ident(span, struct_ident),
+            methods
+        );
+
+        P(ast::Item {
+            ident: token::str_to_ident(&self.ident.clone()),
+            attrs: Vec::new(),
+            id: ast::DUMMY_NODE_ID,
+            node: impl_item,
+            vis: ast::Visibility::Inherit,
+            span: span
+        })
     }
 }
 

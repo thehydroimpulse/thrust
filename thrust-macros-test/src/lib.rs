@@ -4,8 +4,10 @@
 extern crate thrust;
 extern crate tangle;
 
+use thrust::reactor::Reactor;
 use thrust::binary_protocol::*;
 use thrust::protocol::*;
+use std::net::SocketAddr;
 use std::io::{Cursor, Read, Write};
 
 thrust!("
@@ -15,6 +17,13 @@ thrust!("
         string query(1: string voodoo, 2: i32 mission_control);
     }
 ");
+
+#[test]
+fn client() {
+    // let addr = "127.0.0.1:5656".parse().unwrap();
+    // let rpc = foobar1::FlockDbClient::new(addr);
+    // Reactor::run();
+}
 
 #[test]
 fn args_deserialize_gen() {
