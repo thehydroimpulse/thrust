@@ -11,12 +11,12 @@ use protocol::*;
 use binary_protocol::*;
 use reactor::{self, Dispatch, Message, Id};
 use util;
+use runner::Runner;
 
-#[derive(Debug)]
 pub enum Role {
     /// A server will be tasked with actually calling a user defined
     /// RPC method and dispatching the response back to the event loop.
-    Server(SocketAddr),
+    Server(SocketAddr, Sender<(Token, Vec<u8>)>),
     /// A client is tasked with sending an initial RPC and dispatching a response.
     ///
     Client(SocketAddr)
@@ -24,7 +24,8 @@ pub enum Role {
 
 pub enum Incoming {
     /// Method name, data buf, and response channel.
-    Call(String, Vec<u8>, Sender<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>),
+    Call(String, Vec<u8>, Option<Sender<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>>),
+    Reply(Token, Vec<u8>),
     Shutdown
 }
 
@@ -58,11 +59,11 @@ impl Dispatcher {
             let event_loop_sender = SENDER.clone();
             let (data_tx, data_rx) = channel();
 
-            match role {
-                Role::Server(addr) => {
+            match &role {
+                &Role::Server(addr, ref method_dispatch) => {
                     event_loop_sender.send(Message::Bind(addr, id_tx, data_tx))?;
                 },
-                Role::Client(addr) => {
+                &Role::Client(addr) => {
                     event_loop_sender.send(Message::Connect(addr, id_tx, data_tx))?;
                 }
             }
@@ -93,7 +94,15 @@ impl Dispatcher {
                         Ok(Incoming::Shutdown) => break,
                         Ok(Incoming::Call(method, buf, tx)) => {
                             self.event_loop.send(Message::Rpc(self.token, buf));
-                            self.queue.insert(method, tx);
+                            match tx {
+                                Some(tx) => {
+                                    self.queue.insert(method, tx);
+                                },
+                                None => {}
+                            }
+                        },
+                        Ok(Incoming::Reply(token, buf)) => {
+                            self.event_loop.send(Message::Rpc(token, buf));
                         },
                         // The sender-part of the channel has been disconnected.
                         Err(err) => break
@@ -102,35 +111,26 @@ impl Dispatcher {
                 event_loop_msg = event_loop_rx.recv() => {
                     match event_loop_msg {
                         Ok(Dispatch::Data(token, buf)) => {
-                            let mut de = BinaryDeserializer::new(Cursor::new(buf));
-                            let msg = de.read_message_begin()?;
+                            println!("[dispatcher]: reading data from {:?}", token);
+                            match self.role {
+                                // Received an RPC call
+                                Role::Server(_, ref sender) => {
+                                    try!(sender.send((token, buf)));
+                                },
+                                // Received a reply RPC call
+                                Role::Client(_) => {
+                                    let mut de = BinaryDeserializer::new(Cursor::new(buf));
+                                    let msg = de.read_message_begin()?;
 
-                            match msg.ty {
-                                ThriftMessageType::Call => {
-                                    if let Role::Client(_) = self.role {
-                                        // A client isn't supposed to receive RPC calls.
-                                    } else {
-                                        // The server has received a call, so let's reply:
-                                        let buf = util::create_empty_thrift_message("foobar123", ThriftMessageType::Reply);
-                                        self.event_loop.send(Message::Rpc(token, buf));
+                                    match self.queue.remove(&msg.name) {
+                                        Some(tx) => {
+                                            println!("[dispatcher/client]: reply received.");
+                                            tx.send((msg, de))?;
+                                        },
+                                        None => { println!("Cannot find {:?} method name", msg.name); }
                                     }
-                                },
-                                ThriftMessageType::Reply => {
-                                    if let Role::Server(_) = self.role {
-                                        // Servers never get a reply message. Ignore.
-                                    } else {
-                                        // Look into the request cache.
-                                        match self.queue.remove(&msg.name) {
-                                            Some(tx) => {
-                                                tx.send((msg, de))?;
-                                            },
-                                            None => {}
-                                        }
-                                    }
-                                },
-                                _ => {}
+                                }
                             }
-
                         },
                         Err(err) => break
                     }
@@ -160,20 +160,22 @@ mod tests {
     #[test]
     fn should_create_server_dispatcher() {
         let addr = "127.0.0.1:5495".parse().unwrap();
-        let (handle, tx) = Dispatcher::spawn(Role::Server(addr)).unwrap();
+        let (tx, rx) = channel();
+        let (handle, tx) = Dispatcher::spawn(Role::Server(addr, tx)).unwrap();
     }
 
     #[test]
     fn should_start_server() {
         let addr: SocketAddr = "127.0.0.1:5955".parse().unwrap();
-        let (handle_server, server) = Dispatcher::spawn(Role::Server(addr.clone())).unwrap();
+        let (method_dispatch_tx, method_dispatch_rx) = channel();
+        let (handle_server, server) = Dispatcher::spawn(Role::Server(addr.clone(), method_dispatch)).unwrap();
         thread::sleep(Duration::from_millis(30));
         let (handle_client, client) = Dispatcher::spawn(Role::Client(addr.clone())).unwrap();
 
         let buf = util::create_empty_thrift_message("foobar123", ThriftMessageType::Call);
 
         let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
-        client.send(Incoming::Call("foobar123".to_string(), buf, res)).unwrap();
+        client.send(Incoming::Call("foobar123".to_string(), buf, Some(res))).unwrap();
 
         let (res_tx, res_rx) = channel();
         let cloned = res_tx.clone();

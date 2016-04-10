@@ -1,29 +1,7 @@
 #![feature(question_mark, quote, rustc_private, associated_type_defaults)]
 
-use syntax::ext::base::{ExtCtxt, MacResult, DummyResult, MacEager};
-use syntax::ext::build::AstBuilder;
-use syntax::parse::token::{self, InternedString};
-use syntax::codemap::Spanned;
-use syntax::ast;
-use syntax::ptr::P;
 use std::char;
-use thrust::protocol::ThriftType;
-
-extern crate thrust;
-extern crate syntax;
-
-/// Each argument and return value in Thrift is actually just a struct, which means we need to
-/// generate a new one for each of those items.
-pub trait SecondPhaseIR: Ast {
-    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>>;
-}
-
-/// The Ast is responsible for generic the core items in the tree. These are mostly one-to-one
-/// relationships with Rust items. Additional supporting elements are done through later `Ir`
-/// traits.
-pub trait Ast {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>>;
-}
+use std::io::{Read, Write};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Ty {
@@ -62,55 +40,54 @@ impl From<String> for Ty {
 }
 
 impl Ty {
-    pub fn to_protocol(&self, cx: &mut ExtCtxt) -> P<ast::Expr> {
+    pub fn to_protocol(&self) -> &'static str {
         match self {
-            &Ty::String => quote_expr!(cx, ThriftType::String),
-            &Ty::Void => quote_expr!(cx, ThriftType::Void),
-            &Ty::Bool => quote_expr!(cx, ThriftType::Bool),
-            &Ty::Byte => quote_expr!(cx, ThriftType::Byte),
-            &Ty::Double => quote_expr!(cx, ThriftType::Double),
-            &Ty::I16 => quote_expr!(cx, ThriftType::I16),
-            &Ty::I32 => quote_expr!(cx, ThriftType::I32),
-            &Ty::I64 => quote_expr!(cx, ThriftType::I64),
-            &Ty::Map(_, _) => quote_expr!(cx, ThriftType::Map),
-            &Ty::List(_) => quote_expr!(cx, ThriftType::List),
-            &Ty::Set(_) => quote_expr!(cx, ThriftType::Set),
-            &Ty::Binary => quote_expr!(cx, ThriftType::List),
+            &Ty::String => "ThriftType::String",
+            &Ty::Void => "ThriftType::Void",
+            &Ty::Bool => "ThriftType::Bool",
+            &Ty::Byte => "ThriftType::Byte",
+            &Ty::Double => "ThriftType::Double",
+            &Ty::I16 => "ThriftType::I16",
+            &Ty::I32 => "ThriftType::I32",
+            &Ty::I64 => "ThriftType::I64",
+            &Ty::Map(_, _) => "ThriftType::Map",
+            &Ty::List(_) => "ThriftType::List",
+            &Ty::Set(_) => "ThriftType::Set",
+            &Ty::Binary => "ThriftType::List",
             _ => panic!("Not compatible with ThriftType")
         }
     }
 
-    pub fn to_ast(&self, cx: &mut ExtCtxt) -> P<ast::Ty> {
+    pub fn to_string(&self) -> String {
         match self {
-            &Ty::String => quote_ty!(cx, String),
-            &Ty::Void => quote_ty!(cx, ()),
-            &Ty::Byte => quote_ty!(cx, i8),
-            &Ty::Bool => quote_ty!(cx, bool),
-            &Ty::Binary => quote_ty!(cx, Vec<i8>),
-            &Ty::I16 => quote_ty!(cx, i16),
-            &Ty::I32 => quote_ty!(cx, i32),
-            &Ty::I64 => quote_ty!(cx, i64),
-            &Ty::Double => quote_ty!(cx, f64),
+            &Ty::String => "String".to_string(),
+            &Ty::Void => "()".to_string(),
+            &Ty::Byte => "i8".to_string(),
+            &Ty::Bool => "bool".to_string(),
+            &Ty::Binary => "Vec<i8>".to_string(),
+            &Ty::I16 => "i16".to_string(),
+            &Ty::I32 => "i32".to_string(),
+            &Ty::I64 => "i64".to_string(),
+            &Ty::Double => "double".to_string(),
             &Ty::Option(ref t) => {
-                let inner = t.to_ast(cx);
-                quote_ty!(cx, Option<$inner>)
+                let inner = t.to_string();
+                format!("Option<{}>", inner)
             },
             &Ty::List(ref s) => {
-                let inner = s.to_ast(cx);
-                quote_ty!(cx, Vec<$inner>)
+                let inner = s.to_string();
+                format!("Vec<{}>", inner)
             },
             &Ty::Set(ref s) => {
-                let inner = s.to_ast(cx);
-                quote_ty!(cx, HashSet<$inner>)
+                let inner = s.to_string();
+                format!("HashSet<{}>", inner)
             },
             &Ty::Map(ref a, ref b) => {
-                let a = a.to_ast(cx);
-                let b = b.to_ast(cx);
-                quote_ty!(cx, HashMap<$a, $b>)
+                let a = a.to_string();
+                let b = b.to_string();
+                format!("HashMap<{}, {}>", a, b)
             },
             &Ty::Ident(ref s) => {
-                let span = cx.call_site();
-                cx.ty_ident(span, token::str_to_ident(&s))
+                s.clone()
             }
         }
     }
@@ -118,521 +95,33 @@ impl Ty {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Include {
-    path: String
+    pub path: String
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Service {
-    ident: String,
-    methods: Vec<ServiceMethod>
-}
-
-impl Service {
-    pub fn generate_client_struct(&self, cx: &mut ExtCtxt) -> P<ast::Item> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let struct_ident = token::str_to_ident(&format!("{}Client", self.ident.clone()));
-
-        quote_item!(cx, pub struct $struct_ident {
-            dispatcher: Sender<dispatcher::Incoming>,
-            handle: JoinHandle<ThrustResult<()>>
-        }).unwrap()
-    }
-
-    pub fn generate_client_basic_impl(&self, cx: &mut ExtCtxt) -> P<ast::Item> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let struct_ident = token::str_to_ident(&format!("{}Client", self.ident.clone()));
-
-        quote_item!(cx, impl $struct_ident {
-            pub fn new(addr: SocketAddr) -> $struct_ident {
-                let (handle, tx) = Dispatcher::spawn(dispatcher::Role::Client(addr)).unwrap();
-
-                $struct_ident {
-                    dispatcher: tx,
-                    handle: handle
-                }
-            }
-        }).unwrap()
-    }
-
-    pub fn client_method_body(&self, cx: &mut ExtCtxt, method: &ServiceMethod) -> P<ast::Expr> {
-        let method_name = method.ident.clone();
-        let struct_name_str = format!("{}_{}_Args", self.ident.clone(), method.ident.clone());
-
-        quote_expr!(cx, {
-            use std::io::Cursor;
-            let (res, future) = Future::<(ThriftMessage, BinaryDeserializer<Cursor<Vec<u8>>>)>::channel();
-            let mut buf = Vec::new();
-
-            {
-                let mut se = BinarySerializer::new(&mut buf);
-                let args = FlockDb_query_Args {
-                    voodoo: voodoo,
-                    mission_control: mission_control
-                };
-
-                args.serialize(&mut se);
-            }
-
-            self.dispatcher.send(Incoming::Call($method_name.to_string(), buf, res)).unwrap();
-            future.and_then(move |(msg, de)| {
-                Async::Ok("foobar".to_string())
-            })
-        })
-    }
-
-    pub fn generate_client_service_impl(&self, cx: &mut ExtCtxt) -> P<ast::Item> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let struct_ident = token::str_to_ident(&format!("{}Client", self.ident.clone()));
-        let mut methods = Vec::new();
-        let span = cx.call_site();
-
-        // Generate a Rust method for each method.
-        for method in self.methods.iter() {
-            let method_ident = token::str_to_ident(&method.ident);
-            let self_ident = token::str_to_ident("self");
-            let mut inputs = vec![
-                ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
-            ];
-            let ty = method.ty.to_ast(cx);
-
-            for arg in method.args.iter() {
-                let arg_ident = token::str_to_ident(&arg.ident);
-                let arg_ty = arg.ty.to_ast(cx);
-                inputs.push(
-                    cx.arg(span, arg_ident, arg_ty)
-                );
-            }
-
-            let method_body = self.client_method_body(cx, method);
-            let method_node = ast::ImplItemKind::Method(
-                ast::MethodSig {
-                    unsafety: ast::Unsafety::Normal,
-                    constness: ast::Constness::NotConst,
-                    abi: syntax::abi::Abi::Rust,
-                    decl: P(ast::FnDecl {
-                        inputs: inputs,
-                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, Future<$ty>)),
-                        variadic: false
-                    }),
-                    generics: ast::Generics::default(),
-                    explicit_self: ast::ExplicitSelf {
-                        node: ast::SelfKind::Region(None, ast::Mutability::Mutable, self_ident),
-                        span: span
-                    }
-                },
-                cx.block(span, Vec::new(), Some(method_body))
-            );
-
-            let mut item = ast::ImplItem {
-                id: ast::DUMMY_NODE_ID,
-                ident: method_ident,
-                vis: ast::Visibility::Inherited,
-                defaultness: ast::Defaultness::Final,
-                attrs: Vec::new(),
-                node: method_node,
-                span: span
-            };
-
-            methods.push(item);
-        }
-
-        let impl_item = ast::ItemKind::Impl(
-            ast::Unsafety::Normal,
-            ast::ImplPolarity::Positive,
-            ast::Generics::default(),
-            Some(ast::TraitRef {
-                path: ast::Path::from_ident(span, vec![struct_ident.clone()]),
-                ref_id: ast::DUMMY_NODE_ID
-            }), // TraitRef
-            cx.ty_ident(span, struct_ident),
-            methods
-        );
-
-        P(ast::Item {
-            ident: token::str_to_ident(&self.ident.clone()),
-            attrs: Vec::new(),
-            id: ast::DUMMY_NODE_ID,
-            node: impl_item,
-            vis: ast::Visibility::Inherit,
-            span: span
-        })
-    }
-}
-
-impl SecondPhaseIR for Service {
-    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let mut method_args_structs = vec![
-            self.generate_client_struct(cx),
-            self.generate_client_basic_impl(cx),
-            self.generate_client_service_impl(cx)
-        ];
-
-        // For each method, we want to generate a new struct
-        // for the arguments. In Thrift, everything essentially becomes
-        // a struct.
-        for method in self.methods.iter() {
-            let mut fields = Vec::new();
-            let struct_name_str = format!("{}_{}_Args", self.ident.clone(), method.ident.clone());
-            let struct_name = token::str_to_ident(&struct_name_str.clone());
-            let mut serialized_fields = Vec::new();
-            let mut deserialized_fields = Vec::new();
-
-            for node in method.args.iter() {
-                let span = cx.call_site();
-                let mut ty = node.ty.clone();
-
-                match node.attr {
-                    FieldAttribute::Required => {},
-                    // XXX: We need to map the inner `node.ty` to a proper Rust type.
-                    FieldAttribute::Optional => ty = Ty::Option(Box::new(ty)),
-                    _ => panic!("Oneway is not supported for struct fields.")
-                }
-
-                let ident_str = node.ident.clone();
-                let seq = node.seq;
-                let current_field_ident = token::str_to_ident(&node.ident);
-                let serialized_ty = node.ty.to_protocol(cx);
-
-                serialized_fields.push(quote_expr!(cx, {
-                    try!(s.write_field_begin($ident_str, $serialized_ty, $seq));
-                    try!(self.$current_field_ident.serialize(s));
-                    try!(s.write_field_stop());
-                    try!(s.write_field_end());
-                }));
-
-                let de = match &node.ty {
-                    &Ty::String => quote_expr!(cx, de.deserialize_str()),
-                    &Ty::I32 => quote_expr!(cx, de.deserialize_i32()),
-                    _ => panic!("Unsupported types to deserialize.")
-                };
-
-                let de_expr = quote_expr!(cx, {
-                    match try!(de.read_field_begin()).ty {
-                        ThriftType::Stop => { try!(de.read_field_begin()); },
-                        _ => {}
-                    }
-
-                    let val = try!($de);
-                    try!(de.read_field_end());
-                    val
-                });
-
-                deserialized_fields.push(ast::Field {
-                    ident: Spanned {
-                        node: current_field_ident.clone(),
-                        span: span
-                    },
-                    expr: de_expr,
-                    span: span
-                });
-
-                let field = ast::StructField {
-                    node: ast::StructField_ {
-                        kind: ast::StructFieldKind::NamedField(current_field_ident.clone(), ast::Visibility::Public),
-                        id: ast::DUMMY_NODE_ID,
-                        ty: ty.to_ast(cx),
-                        attrs: Vec::new()
-                    },
-                    span: span
-                };
-                fields.push(field);
-            }
-
-            let span = cx.call_site();
-            let derives = vec![
-                cx.meta_word(span, InternedString::new("Debug")),
-                cx.meta_word(span, InternedString::new("PartialEq")),
-                cx.meta_word(span, InternedString::new("Eq")),
-                cx.meta_word(span, InternedString::new("Clone")),
-                cx.meta_word(span, InternedString::new("Hash")),
-            ];
-            let attr = ast::Attribute {
-                node: ast::Attribute_ {
-                    id: ast::AttrId(0),
-                    style: ast::AttrStyle::Inner,
-                    value: cx.meta_list(span, InternedString::new("derive"), derives),
-                    is_sugared_doc: false
-                },
-                span: span
-            };
-            let struct_def = ast::VariantData::Struct(fields, ast::DUMMY_NODE_ID);
-            let kind = ast::ItemKind::Struct(struct_def, ast::Generics::default());
-
-            let item = P(ast::Item {
-                ident: struct_name.clone(),
-                attrs: vec![attr],
-                id: ast::DUMMY_NODE_ID,
-                node: kind,
-                vis: ast::Visibility::Public,
-                span: span
-            });
-
-            method_args_structs.push(item);
-            method_args_structs.push(quote_item!(cx, impl Serialize for $struct_name {
-                fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
-                    where S: Serializer + ThriftSerializer
-                {
-                    try!(s.write_struct_begin(&*$struct_name_str.clone()));
-                    // for each field
-                    $serialized_fields
-                    try!(s.write_struct_end());
-
-                    Ok(())
-                }
-            }).unwrap());
-
-            let path = cx.path(span, vec![struct_name]);
-            let struct_expr_node = ast::ExprKind::Struct(path, deserialized_fields, None);
-            let struct_expr = P(ast::Expr {
-                id: ast::DUMMY_NODE_ID,
-                node: struct_expr_node,
-                span: span,
-                attrs: None
-            });
-            method_args_structs.push(quote_item!(cx, impl Deserialize for $struct_name {
-                fn deserialize<D>(de: &mut D) -> Result<Self, Error>
-                    where D: Deserializer + ThriftDeserializer
-                {
-                    try!(de.read_struct_begin());
-                    let args = $struct_expr;
-                    try!(de.read_struct_end());
-
-                    Ok(args)
-                }
-            }).unwrap());
-        }
-
-        method_args_structs
-    }
-}
-
-impl Ast for Service {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
-        let span = cx.call_site();
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let mut items = Vec::new();
-
-        for method in self.methods.iter() {
-            let method_ident = token::str_to_ident(&method.ident);
-            let self_ident = token::str_to_ident("self");
-            let mut inputs = vec![
-                ast::Arg::new_self(span, ast::Mutability::Immutable, self_ident.clone())
-            ];
-            let ty = method.ty.to_ast(cx);
-
-            for arg in method.args.iter() {
-                let arg_ident = token::str_to_ident(&arg.ident);
-                let arg_ty = arg.ty.to_ast(cx);
-                inputs.push(
-                    cx.arg(span, arg_ident, arg_ty)
-                );
-            }
-
-            let method_node = ast::TraitItemKind::Method(
-                ast::MethodSig {
-                    unsafety: ast::Unsafety::Normal,
-                    constness: ast::Constness::NotConst,
-                    abi: syntax::abi::Abi::Rust,
-                    decl: P(ast::FnDecl {
-                        inputs: inputs,
-                        output: ast::FunctionRetTy::Ty(quote_ty!(cx, Future<$ty>)),
-                        variadic: false
-                    }),
-                    generics: ast::Generics::default(),
-                    explicit_self: ast::ExplicitSelf {
-                        node: ast::SelfKind::Region(None, ast::Mutability::Mutable, self_ident),
-                        span: span
-                    }
-                },
-                None
-            );
-
-            let mut item = ast::TraitItem {
-                id: ast::DUMMY_NODE_ID,
-                ident: method_ident,
-                attrs: Vec::new(),
-                node: method_node,
-                span: span
-            };
-
-            items.push(item);
-        }
-
-
-        let kind = ast::ItemKind::Trait(ast::Unsafety::Normal, ast::Generics::default(), P::new(), items);
-        let item = P(ast::Item {
-            ident: ident,
-            attrs: vec![],
-            id: ast::DUMMY_NODE_ID,
-            node: kind,
-            vis: ast::Visibility::Public,
-            span: span
-        });
-
-        quote_item!(cx, $item)
-    }
+    pub ident: String,
+    pub methods: Vec<ServiceMethod>
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ServiceMethod {
-    ident: String,
-    ty: Ty,
-    attr: FieldAttribute,
-    args: Vec<StructField>
+    pub ident: String,
+    pub ty: Ty,
+    pub attr: FieldAttribute,
+    pub args: Vec<StructField>
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Enum {
-    ident: String,
-    variants: Vec<String>
-}
-
-impl SecondPhaseIR for Enum {
-    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        vec![quote_item!(cx, impl Serialize for $ident {
-            fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
-                where S: Serializer + ThriftSerializer
-            {
-                Ok(())
-            }
-        }).unwrap()]
-    }
-}
-
-impl Ast for Enum {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let mut enum_def = ast::EnumDef {
-            variants: Vec::new()
-        };
-
-        for node in self.variants.iter() {
-            let name = token::str_to_ident(&node);
-            let span = cx.call_site();
-
-            enum_def.variants.push(ast::Variant {
-                node: ast::Variant_ {
-                    name: name,
-                    attrs: Vec::new(),
-                    data: ast::VariantData::Unit(ast::DUMMY_NODE_ID),
-                    disr_expr: None
-                },
-                span: span
-            });
-        }
-
-        let span = cx.call_site();
-        let derives = vec![
-            cx.meta_word(span, InternedString::new("Debug")),
-            cx.meta_word(span, InternedString::new("PartialEq")),
-            cx.meta_word(span, InternedString::new("Eq")),
-            cx.meta_word(span, InternedString::new("Clone")),
-            cx.meta_word(span, InternedString::new("Hash")),
-        ];
-        let attr = ast::Attribute {
-            node: ast::Attribute_ {
-                id: ast::AttrId(0),
-                style: ast::AttrStyle::Inner,
-                value: cx.meta_list(span, InternedString::new("derive"), derives),
-                is_sugared_doc: false
-            },
-            span: span
-        };
-
-        let kind = ast::ItemKind::Enum(enum_def, ast::Generics::default());
-        let item = P(ast::Item {
-            ident: ident,
-            attrs: vec![attr],
-            id: ast::DUMMY_NODE_ID,
-            node: kind,
-            vis: ast::Visibility::Public,
-            span: span
-        });
-
-        quote_item!(cx, $item)
-    }
+    pub ident: String,
+    pub variants: Vec<String>
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Struct {
-    ident: String,
-    fields: Vec<StructField>
-}
-
-impl SecondPhaseIR for Struct {
-    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        vec![quote_item!(cx, impl Serialize for $ident {
-            fn serialize<S>(&self, s: &mut S) -> Result<(), Error>
-                where S: Serializer + ThriftSerializer
-            {
-                Ok(())
-            }
-        }).unwrap()]
-    }
-}
-
-impl Ast for Struct {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
-        let mut ident = token::str_to_ident(&self.ident.clone());
-        let mut fields = Vec::new();
-
-        for node in self.fields.iter() {
-            let span = cx.call_site();
-            let mut ty = node.ty.clone();
-
-            match node.attr {
-                FieldAttribute::Required => {},
-                // XXX: We need to map the inner `node.ty` to a proper Rust type.
-                FieldAttribute::Optional => ty = Ty::Option(Box::new(ty)),
-                _ => panic!("Oneway is not supported for struct fields.")
-            }
-
-            let field = ast::StructField {
-                node: ast::StructField_ {
-                    kind: ast::StructFieldKind::NamedField(token::str_to_ident(&node.ident), ast::Visibility::Public),
-                    id: ast::DUMMY_NODE_ID,
-                    ty: ty.to_ast(cx),
-                    attrs: Vec::new()
-                },
-                span: span
-            };
-            fields.push(field);
-        }
-
-        let span = cx.call_site();
-        let derives = vec![
-            cx.meta_word(span, InternedString::new("Debug")),
-            cx.meta_word(span, InternedString::new("PartialEq")),
-            cx.meta_word(span, InternedString::new("Eq")),
-            cx.meta_word(span, InternedString::new("Clone")),
-            cx.meta_word(span, InternedString::new("Hash")),
-        ];
-        let attr = ast::Attribute {
-            node: ast::Attribute_ {
-                id: ast::AttrId(0),
-                style: ast::AttrStyle::Inner,
-                value: cx.meta_list(span, InternedString::new("derive"), derives),
-                is_sugared_doc: false
-            },
-            span: span
-        };
-        let struct_def = ast::VariantData::Struct(fields, ast::DUMMY_NODE_ID);
-        let kind = ast::ItemKind::Struct(struct_def, ast::Generics::default());
-
-        let item = P(ast::Item {
-            ident: ident,
-            attrs: vec![attr],
-            id: ast::DUMMY_NODE_ID,
-            node: kind,
-            vis: ast::Visibility::Public,
-            span: span
-        });
-
-        quote_item!(cx, $item)
-    }
+    pub ident: String,
+    pub fields: Vec<StructField>
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -644,10 +133,10 @@ pub enum FieldAttribute {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct StructField {
-    seq: i16,
-    attr: FieldAttribute,
-    ty: Ty,
-    ident: String
+    pub seq: i16,
+    pub attr: FieldAttribute,
+    pub ty: Ty,
+    pub ident: String
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -657,18 +146,6 @@ pub struct Typedef(pub Ty, pub String);
 pub struct Namespace {
     pub lang: String,
     pub module: String
-}
-
-impl SecondPhaseIR for Namespace {
-    fn second_ir(&self, cx: &mut ExtCtxt) -> Vec<P<ast::Item>> {
-        vec![]
-    }
-}
-
-impl Ast for Namespace {
-    fn ir(&self, cx: &mut ExtCtxt) -> Option<P<ast::Item>> {
-        None
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
@@ -714,24 +191,6 @@ pub enum Token {
     B,
 }
 
-
-fn map_ty(ty: &str) -> ast::Ident {
-    let ty = match ty {
-        "string" => "String",
-        "byte" => "i8",
-        "bool" => "bool",
-        "i16" => "i16",
-        "i32" => "i32",
-        "i64" => "i64",
-        "double" => "f64",
-        "binary" => "Vec<i8>",
-        s => s
-    };
-
-    token::str_to_ident(ty)
-}
-
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     Expected,
@@ -747,7 +206,7 @@ pub enum Error {
 pub struct Parser<'a> {
     buffer: &'a str,
     pos: usize,
-    token: Token,
+    pub token: Token,
     last_token_eof: bool
 }
 
@@ -1034,25 +493,15 @@ impl<'a> Parser<'a> {
         Ok(ident)
     }
 
-    pub fn parse_item(&mut self) -> Result<Box<SecondPhaseIR>, Error> {
-        if self.lookahead_keyword(Keyword::Namespace) {
-            Ok(Box::new(self.parse_namespace()?))
-        } else if self.lookahead_keyword(Keyword::Enum) {
-            Ok(Box::new(self.parse_enum()?))
-        } else if self.lookahead_keyword(Keyword::Struct) {
-            Ok(Box::new(self.parse_struct()?))
-        } else if self.lookahead_keyword(Keyword::Service) {
-            Ok(Box::new(self.parse_service()?))
-        } else {
-            Err(Error::NoMoreItems)
-        }
-    }
-
     pub fn lookahead_keyword(&mut self, keyword: Keyword) -> bool {
         self.lookahead(&Token::Keyword(keyword))
     }
 
     pub fn lookahead(&mut self, token: &Token) -> bool {
+        if self.token == Token::B {
+            self.bump();
+        }
+
         if self.token == *token {
             true
         } else {

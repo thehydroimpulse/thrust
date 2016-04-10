@@ -1,6 +1,10 @@
 [package]
-name = "thrust_parser"
+name = "thrust-examples"
 version = "0.1.0"
 authors = ["Daniel Fagnan <dnfagnan@gmail.com>"]
 
 [dependencies]
+tangle = "*"
+
+[dependencies.thrust]
+path = ".."

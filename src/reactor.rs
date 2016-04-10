@@ -163,7 +163,13 @@ impl Connection {
     pub fn ready(&mut self, event_loop: &mut EventLoop<Reactor>, events: EventSet) {
         match self.state {
             State::Reading if events.is_readable() => {
-                self.readable();
+                match self.readable() {
+                    Ok(_) => {},
+                    Err(err) => {
+                        println!("[reactor]: could not dispatch incoming data. {:?}", err);
+                        panic!("{:?}", err);
+                    }
+                }
                 self.reregister(event_loop, self.token);
             },
             State::Writing if events.is_writable() => {
@@ -221,7 +227,8 @@ impl Connection {
             match op {
                 Some(buf) => {
                     self.state = State::Reading;
-                    self.chan.send(Dispatch::Data(self.token, buf));
+                    println!("[reactor/connection]: reading data from {:?}", self.token);
+                    try!(self.chan.send(Dispatch::Data(self.token, buf)));
                 },
                 None => {}
             }
@@ -363,6 +370,7 @@ impl Reactor {
     pub fn incoming_msg(&mut self, event_loop: &mut EventLoop<Self>, msg: Message) -> ThrustResult<()> {
         match msg {
             Message::Rpc(id, data) => {
+                println!("[reactor]: rpc @ {:?}", id);
                 self.connections.get_mut(&id).expect("connection was not found #2").write(&*data);
             },
             Message::Shutdown => {
@@ -375,8 +383,9 @@ impl Reactor {
                 id_tx.send(Id(new_token));
                 let mut conn = Connection::new((mio_stream, addr), new_token, tx);
 
-                self.connections.insert(new_token, conn);
+                println!("[reactor]: binding to {:?} @ {:?}", addr, new_token);
 
+                self.connections.insert(new_token, conn);
                 self.connections.get_mut(&new_token)
                     .expect("Cannot find the connection from the token {:?}")
                     .register(event_loop, new_token);
@@ -389,6 +398,8 @@ impl Reactor {
 
                 id_tx.send(Id(token));
                 self.servers.insert(token, tx);
+
+                println!("[reactor]: binding to {:?} @ {:?}", addr, token);
 
                 event_loop.register(&lis, token, EventSet::readable(), PollOpt::edge())?;
                 self.listeners.insert(token, lis);
